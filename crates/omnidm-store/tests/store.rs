@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use omnidm_core::engine::Method;
 use omnidm_core::{Segment, SegmentId};
 use omnidm_store::{
     DownloadId, NewDownload, ProbeResult, SCHEMA_VERSION, Status, Store, StoreError,
@@ -13,6 +14,8 @@ fn new_download(url: &str) -> NewDownload {
         referrer: Some("https://example.com/page".into()),
         user_agent: Some("TestAgent/1.0".into()),
         headers: vec![("Accept-Language".into(), "en".into())],
+        method: Method::Get,
+        body: vec![],
     }
 }
 
@@ -110,6 +113,7 @@ fn probe_result_is_stored() {
                 etag: Some("\"abc\"".into()),
                 last_modified: Some("Tue, 14 Nov 2023 22:13:20 GMT".into()),
                 resumable: true,
+                final_method: Method::Get,
             },
         )
         .unwrap();
@@ -295,4 +299,139 @@ fn a_database_from_a_newer_version_is_refused() {
         Err(other) => panic!("wrong error: {other}"),
         Ok(_) => panic!("a newer database must be refused"),
     }
+}
+
+#[test]
+fn a_post_download_keeps_its_method_and_form_data() {
+    let mut store = Store::open_in_memory().unwrap();
+    let get = store
+        .insert_download(&new_download("https://e.com/a"))
+        .unwrap();
+    let post = store
+        .insert_download(&NewDownload {
+            method: Method::Post,
+            body: b"id=7&agree=1".to_vec(),
+            ..new_download("https://e.com/form")
+        })
+        .unwrap();
+
+    let get = store.get_download(get).unwrap().unwrap();
+    assert_eq!((get.method, get.body.as_slice()), (Method::Get, &b""[..]));
+    assert_eq!(get.final_method, None, "not probed yet");
+    let post = store.get_download(post).unwrap().unwrap();
+    assert_eq!(post.method, Method::Post);
+    assert_eq!(post.body, b"id=7&agree=1");
+}
+
+#[test]
+fn the_probe_records_the_method_after_redirects() {
+    let mut store = Store::open_in_memory().unwrap();
+    let id = store
+        .insert_download(&NewDownload {
+            method: Method::Post,
+            body: b"id=7".to_vec(),
+            ..new_download("https://e.com/form")
+        })
+        .unwrap();
+    store
+        .record_probe(
+            id,
+            &ProbeResult {
+                final_url: "https://e.com/file.zip".into(),
+                file_name: "file.zip".into(),
+                total_size: Some(10),
+                etag: None,
+                last_modified: None,
+                resumable: true,
+                final_method: Method::Get,
+            },
+        )
+        .unwrap();
+    let d = store.get_download(id).unwrap().unwrap();
+    assert_eq!(d.method, Method::Post);
+    assert_eq!(d.final_method, Some(Method::Get));
+}
+
+/// The version 1 schema exactly as M1 shipped it. Never edit: it stands for databases
+/// that already exist on users' disks.
+const SCHEMA_V1: &str = r#"
+    CREATE TABLE downloads (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        url           TEXT    NOT NULL,
+        final_url     TEXT,
+        save_dir      TEXT    NOT NULL,
+        file_name     TEXT,
+        referrer      TEXT,
+        user_agent    TEXT,
+        total_size    INTEGER,
+        etag          TEXT,
+        last_modified TEXT,
+        resumable     INTEGER NOT NULL DEFAULT 0,
+        status        TEXT    NOT NULL,
+        error         TEXT,
+        created_at    INTEGER NOT NULL,
+        completed_at  INTEGER
+    );
+    CREATE TABLE download_headers (
+        download_id INTEGER NOT NULL REFERENCES downloads(id) ON DELETE CASCADE,
+        position    INTEGER NOT NULL,
+        name        TEXT    NOT NULL,
+        value       TEXT    NOT NULL,
+        PRIMARY KEY (download_id, position)
+    );
+    CREATE TABLE segments (
+        download_id INTEGER NOT NULL REFERENCES downloads(id) ON DELETE CASCADE,
+        segment_id  INTEGER NOT NULL,
+        start       INTEGER NOT NULL,
+        "end"       INTEGER NOT NULL,
+        written     INTEGER NOT NULL,
+        PRIMARY KEY (download_id, segment_id)
+    );
+"#;
+
+#[test]
+fn a_version_1_database_is_upgraded_and_keeps_its_downloads() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("omnidm.db");
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(SCHEMA_V1).unwrap();
+        conn.execute(
+            "INSERT INTO downloads (url, final_url, save_dir, file_name, total_size, resumable,
+                                    status, created_at)
+             VALUES ('https://e.com/a.zip', 'https://cdn.e.com/a.zip', 'dl', 'a.zip',
+                     1000, 1, 'paused', 1700000000)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            r#"INSERT INTO segments (download_id, segment_id, start, "end", written)
+               VALUES (1, 0, 0, 999, 400)"#,
+            [],
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+    }
+
+    let store = Store::open(&path).unwrap();
+
+    let d = store.get_download(DownloadId(1)).unwrap().unwrap();
+    assert_eq!(d.url, "https://e.com/a.zip");
+    assert_eq!(d.status, Status::Paused);
+    assert_eq!(d.method, Method::Get);
+    assert!(d.body.is_empty());
+    assert_eq!(
+        d.final_method,
+        Some(Method::Get),
+        "M1 only made GET downloads, so a probed one ended as GET"
+    );
+    assert_eq!(
+        store.load_segments(d.id).unwrap(),
+        vec![seg(0, 0, 999, 400)]
+    );
+    let version: u32 = rusqlite::Connection::open(&path)
+        .unwrap()
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .unwrap();
+    assert_eq!(version, SCHEMA_VERSION);
 }

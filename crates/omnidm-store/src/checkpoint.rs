@@ -25,6 +25,7 @@ impl Checkpointer for StoreCheckpointer<'_> {
             etag: info.etag.clone(),
             last_modified: info.last_modified.clone(),
             resumable: info.resumable,
+            final_method: info.final_method,
         };
         self.store
             .record_probe(self.id, &probe)
@@ -50,6 +51,7 @@ pub fn resume_from(record: &DownloadRecord, segments: Vec<Segment>) -> Option<Re
             resumable: record.resumable,
             content_type: None,
             content_disposition: None,
+            final_method: record.final_method.unwrap_or(record.method),
         },
         segments,
     })

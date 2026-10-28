@@ -22,8 +22,8 @@
 ### 1.1 Version 1.0 includes
 
 - Segmented HTTP/HTTPS downloads with dynamic splitting, gradual ramp-up, stall handling and safe resume
-- Proxies (HTTP, HTTPS CONNECT, SOCKS5, PAC, system proxy), Basic and Digest auth, cookies, custom headers, POST
-- Global and per-download speed limits
+- The Windows proxy setting (fixed proxy, bypass list, PAC script, auto-detect); a hand-set proxy and SOCKS5 are not in v1 (decided 2026-10-28). Basic and Digest auth, cookies, custom headers, POST
+- ~~Global and per-download speed limits~~ (dropped 2026-10-28, see §5.7)
 - Queues, scheduler, categories, post-queue actions
 - Browser extension: download capture with safe handoff, context menus, media detection, popup, options
 - HLS and DASH downloads with FFmpeg remuxing
@@ -109,8 +109,8 @@ All identifiers derive from the GitHub account `FahimAnsawry`, written in lowerc
 OmniDm/
   Cargo.toml                 workspace
   crates/
-    omnidm-core/             engine: Download, Segment, Scheduler (split/ramp/stall), ResumeValidator, RateLimiter
-    omnidm-net/              HTTP client wrapper: proxy/PAC, auth, cookies, redirects, file naming
+    omnidm-core/             engine: Download, Segment, Scheduler (split/ramp/stall), ResumeValidator
+    omnidm-net/              HTTP client wrapper: Windows proxy/PAC, auth, cookies, redirects, file naming
     omnidm-store/            SQLite schema, migrations, repositories, settings
     omnidm-queue/            queues, schedules, categories, power management
     omnidm-media/            HLS and DASH parsing, AES-128 decryption, FFmpeg adapter
@@ -132,9 +132,9 @@ OmniDm/
 | Area | Choice | Notes |
 |---|---|---|
 | Async runtime | `tokio` | |
-| HTTP | `reqwest` (`rustls` + platform verifier, `socks`, `gzip`, `brotli`, `deflate`) | Uses the Windows root store so enterprise CAs work. **Segments use HTTP/1.1** (§5.6) |
+| HTTP | `reqwest` (`rustls` + platform verifier, `gzip`, `brotli`, `deflate`) | Uses the Windows root store so enterprise CAs work. **Segments use HTTP/1.1** (§5.6) |
 | Digest auth | `digest_auth` | |
-| PAC | `rquickjs` or `boa_engine` | Sandboxed: no file or network access from scripts |
+| PAC | Windows' own engine (`WinHttpGetProxyForUrl`) | No JavaScript engine is bundled; scripts run the way every other Windows app runs them |
 | Cookies | `cookie_store` | Per-download jar |
 | SQLite | `rusqlite` (bundled) | WAL mode, `PRAGMA user_version` migrations |
 | Credentials | `keyring` (Windows Credential Manager) | The database stores only references |
@@ -192,7 +192,7 @@ Invariant: the segments of a download are ordered, don't overlap, and cover `[0,
 ```
 target = min(current * 2, max_connections(download, host), HARD_CAP=32)
 skip the tick if:
-  - a speed limit applies and current speed >= 85% of it
+  - a speed limit applies and current speed >= 85% of it (kept in the ramp controller as a hook; no limit is ever set while §5.7 is dropped)
   - the host recently answered 429/503 (back-off window)
   - the largest splittable remainder < 2 * min_segment
 for each connection to add:
@@ -219,7 +219,7 @@ for each connection to add:
 
 A segment is *stalled* when its speed stays below 25 % of the median segment speed for 8 s, or it receives no bytes for 15 s.
 - **Large remainder** (≥ 2 × `min_segment`): split it (§5.3) so a new connection takes the tail half.
-- **Small remainder:** start a **duplicate** request for the remaining range. The duplicate buffers in memory, which is bounded because the remainder is under 2 × `min_segment`. The first to finish commits; the other is cancelled. At most one duplicate per segment.
+- **Small remainder:** start a **duplicate** request for the remaining range. (Built in M2 as: below 25 % of the download's fastest connection for `hedge_after`, default 8 s.) The duplicate buffers in memory, which is bounded because the remainder is under 2 × `min_segment`. The first to finish commits; the other is cancelled. At most one duplicate per segment.
 
 ### 5.5 Disk writes and checkpoints
 
@@ -248,17 +248,15 @@ A segment is *stalled* when its speed stays below 25 % of the median segment spe
   | Response | Action |
   |---|---|
   | Network error, timeout, 5xx | Retry with exponential back-off and jitter (1 s → 60 s, default 10 tries per segment) |
-  | `429` / `503` | Honour `Retry-After`, halve the connection count for the host, retry |
-  | `401` / `407` | Ask for credentials (or use saved ones), retry once. Until M5, a `401` fails with "this site needs a username and password"; a `407` uses the credentials in the proxy settings |
+  | `429` / `503` | Honour `Retry-After`; from then on use no more connections than the server was serving when it refused; retry |
+  | `401` / `407` | Ask for credentials (or use saved ones), retry once. Until M5, a `401` fails with "this site needs a username and password"; a `407` (the proxy wants a password) fails with a clear message |
   | `403`, `404`, `410` on the probe | Fail with a clear message. For a browser capture, report back so the extension resumes the browser's copy (§9.3) |
   | `403` mid-download (expired token) | Pause with "link expired, refresh address". Ask the extension for fresh cookies or a new URL |
 - **Content sniffing:** if the first bytes are HTML while a binary was expected, stop and report "server returned a web page instead of the file".
 
 ### 5.7 Speed limiting
 
-- A token bucket per scope: **global → queue → download**, chained. Each read of up to 16 KiB acquires tokens from every applicable bucket.
-- The burst is about 1 s of the limit. Waiting happens before the read, so TCP back-pressure slows the sender.
-- Limits change live from the UI or the scheduler.
+**Dropped (decided 2026-10-28):** not needed. OmniDm has no speed limit, so the token bucket, `--limit` and the limit settings in the UI are not built. `EngineConfig.speed_limit` stays as an unused hook (always `None`) in case it comes back later.
 
 ### 5.8 File naming
 
@@ -289,7 +287,7 @@ Then:
 | Headers | Captured browser headers are replayed except headers the engine controls (`Host`, `Range`, `If-*`, `Connection`, `Content-Length`, `Accept-Encoding`, `Proxy-*`, `Upgrade`) |
 | Compression | Request `Accept-Encoding: identity` for ranged segments, so byte offsets match the file. Single-stream downloads may accept gzip/br |
 | Auth | Basic, Digest (M5, with the login dialog). Credentials per site in Windows Credential Manager. NTLM/Negotiate in v1.x (§15, R1) |
-| Proxy | None / system / manual HTTP / HTTPS CONNECT / SOCKS5 with remote DNS / PAC URL. System settings read with `WinHttpGetIEProxyConfigForCurrentUser`. PAC scripts run in a sandboxed JS engine with a time limit, results cached per host |
+| Proxy | Follows the Windows setting only (`WinHttpGetIEProxyConfigForCurrentUser`): a PAC script or auto-detect first, falling back to the fixed proxy, as Windows does. Fixed proxies may be one address or `http=…;https=…`; FTP/SOCKS entries are ignored. The Windows bypass list applies (`<local>`, wildcards), and this computer (`localhost`, loopback) is always reached directly. PAC answers are cached per site. reqwest's own system-proxy support is switched off so this plan alone decides. A hand-set proxy and SOCKS5 are not in v1 (decided 2026-10-28) |
 | TLS | `rustls` with the platform verifier. "Ignore certificate errors" is a per-download, clearly marked option, off by default |
 | IPv6 | Happy Eyeballs through the connector |
 
@@ -359,7 +357,7 @@ The envelope is `{"v": 1, "id": "<uuid>", "type": "<name>", "payload": {…}}`. 
 | Build | Command | Notes |
 |---|---|---|
 | Chromium (Chrome, Edge, Brave, Opera, Vivaldi) | `wxt build` / `wxt zip` | MV3 service worker |
-| Firefox | `wxt build -b firefox --mv3` / `wxt zip -b firefox --mv3` | MV3 with event-page background. `browser_specific_settings.gecko.id` set. Minimum Firefox version decided in M3 |
+| Firefox | `wxt build -b firefox --mv3` / `wxt zip -b firefox --mv3` | MV3 with event-page background. `browser_specific_settings.gecko.id` set. Minimum Firefox 128 (decided 2026-10-28) |
 
 ### 9.2 Permissions
 
@@ -429,12 +427,12 @@ The app sends `accepted` only after its probe succeeds, so a link that works onl
 | Screen | Contents |
 |---|---|
 | Main window | Toolbar (Add, Resume, Pause, Delete, Queue, Settings). Sidebar (All, Downloading, Completed, Failed, categories, queues). List: name, size, progress, speed, time left, status, added |
-| Add download | URL (pre-filled from the clipboard), file name, folder (category default), connections, speed limit, checksum, "start now" or "add to queue" |
+| Add download | URL (pre-filled from the clipboard), file name, folder (category default), connections, checksum, "start now" or "add to queue" |
 | Capture prompt | Shown for captured downloads when "ask before downloading" is on: name, size, folder, category, queue |
 | Details | Segment map (bar showing each segment's progress), connections with per-connection speed, headers, redirect chain, log |
-| Queues & scheduler | Queue list and order, concurrency, days and times, speed limit, post-queue action |
-| Settings | General, Connections, Speed, Proxy, Categories, Sites, Browser integration, Notifications, Advanced |
-| Tray | Show/hide, pause all, resume all, speed limit on/off, quit |
+| Queues & scheduler | Queue list and order, concurrency, days and times, post-queue action |
+| Settings | General, Connections, Categories, Sites, Browser integration, Notifications, Advanced |
+| Tray | Show/hide, pause all, resume all, quit |
 
 ### 11.2 Backend ↔ UI
 
@@ -467,13 +465,13 @@ The app sends `accepted` only after its probe succeeds, so a link that works onl
 
 | Layer | What |
 |---|---|
-| Unit | Split math, ramp controller, token bucket, filename rules, `Content-Disposition` parsing, header filtering, protocol (de)serialisation |
+| Unit | Split math, ramp controller, filename rules, `Content-Disposition` parsing, header filtering, protocol (de)serialisation |
 | Property | proptest: after any sequence of splits, completions, stalls and checkpoints, segments still cover `[0, size)` exactly with no overlap, and `written ≤ end − start + 1` |
 | Integration | `omnidm-testserver` (axum) with switches: ranges on/off, ignore range (200), change ETag mid-download, throttle a range, drop the connection at byte N, 429 + `Retry-After`, 503, redirect chains, auth (Basic/Digest), cookies required, `Content-Disposition` variants, chunked/unknown size, HTML error page, HLS/DASH fixtures (including AES-128) |
 | Crash | Start a large download, kill the process at random points (20 runs), resume, compare SHA-256 |
 | Extension | §9.6 |
 | UI | Component tests (Vitest), plus a Playwright smoke test of the built app's webview through Tauri's WebDriver support |
-| Manual | Real sites: large Linux ISOs, a GitHub release asset (redirect to a signed CDN URL), a site behind login, proxy and Tor |
+| Manual | Real sites: large Linux ISOs, a GitHub release asset (redirect to a signed CDN URL), a site behind login, a PAC script on a company network |
 
 **CI** (GitHub Actions, `windows-latest`):
 - `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`.
@@ -502,7 +500,7 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 - [x] Probe, preallocation, segment workers, ramp controller, splitting, positional writes, checkpoints.
 - [x] `If-Range` resume, `200`/`416` handling, retry/back-off, restarting stalled connections.
 - [x] SQLite store with migrations; downloads and segments repositories.
-- [x] CLI: `omnidm get <url> [-c N] [-o file] [-d dir] [-H header]` and `omnidm list`, running the engine in-process (the pipe comes in M3). `--limit` moves to M2 with the token bucket.
+- [x] CLI: `omnidm get <url> [-c N] [-o file] [-d dir] [-H header]` and `omnidm list`, running the engine in-process (the pipe comes in M3). (`--limit` was planned for M2, then dropped with §5.7.)
 - **Done when:** a 4 GB download with 8 connections survives 20 random kills and matches its SHA-256.
   - **Result:** 4.5 GiB (past the 32-bit offset limit), 8 connections, 20 random kills.
   - After every kill, every byte the database counted as saved was verified on disk, and saved progress never went backwards.
@@ -517,23 +515,34 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
   - a "link expired" pause for a 403 mid-download
   - a free-space check before allocating (needed now that part files are sparse)
 
-### M2: Network features
-- [ ] Redirect handling and filename rules (§5.8), cookies, custom headers, POST.
-- [ ] Proxy: manual (with optional proxy username/password), SOCKS5, system, PAC.
-- [ ] Token-bucket limiter (global/download) and the 85 % ramp gate.
-- [ ] The items moved from M1 (listed above).
+### M2: Network features ✅ (2026-10-28)
+- [x] Filename rules (§5.8): `Content-Disposition` (`filename*` UTF-8/ISO-8859-1, `filename`, raw UTF-8 bytes), extension from the MIME type when missing or a script's (`download.php`). The engine has a separate `probe()` so the part file gets the real name; `download()` reuses the probe's response.
+- [x] Redirects followed by hand (`omnidm-net::redirect`), at most 10 hops. A `303` (and `301`/`302`, as browsers do) turns a `POST` into a `GET`; `307`/`308` keep it. `Authorization` is only sent to the request's own origin. Recording the redirect chain moves to M5 (the Details view is its only reader).
+- [x] Cookies: a per-download jar (`cookie_store`) shared by every connection. It sends each URL only its own cookies and adds `Set-Cookie` from every response, redirects included. A captured `Cookie` header goes into the jar, never raw. Cookies are **not saved** to the database yet (the encryption decision is in M3); the CLI takes them with `-b` on every run.
+- [x] Custom headers: replayed except those the engine controls (§6), and `Content-*` body headers only with a `POST`.
+- [x] POST: `Request.method`/`body`, the final method after redirects in `RemoteInfo`, and every range request repeats the form. Schema version 2 adds `method`, `body` and `final_method` (old databases upgrade in place). CLI: `--data`.
+- Found while testing: while a range waited to retry, the ramp-up treated its connection as free and split it, adding load to a struggling server. Ramp-up now pauses while any range waits to retry.
+- [x] Proxy: the Windows setting only (`omnidm-net::proxy`): fixed proxy, bypass list, PAC script and auto-detect through WinHTTP. Tested with a real HTTP test proxy and Windows' PAC engine. A hand-set proxy and SOCKS5 are not built (decided 2026-10-28).
+- ~~Token-bucket limiter and `--limit`~~: dropped 2026-10-28 (§5.7).
+- [x] The items moved from M1:
+  - **Free space:** checked before the part file is made; `EngineError::DiskFull`, with no file left behind. Tested with a pretend 1 PiB file.
+  - **Expired links:** a `401`/`403`/`410` after the first response lets running connections finish, opens no new ones, then saves and returns `EngineError::LinkExpired`. The CLI leaves the download paused, so the same command continues once the link works again.
+  - **Busy servers:** after a `429`/`503` the download never uses more connections than the server was serving at that moment. That is the number it just proved it accepts, and it beats a blind halving. Before this, a busy mirror could fail the download by using up the retries.
+  - **Duplicate requests (§5.4):** a connection below a quarter of the download's best speed for `hedge_after` (8 s), on a range too small to split, gets one duplicate. The first to finish wins and the other is cancelled. A crawling tail went from 8 s to 0.7 s in the test, and a hung one no longer waits for the stall timeout.
+- "Ignore certificate errors" (§6 TLS) moves to M5: it is a per-download option that must be clearly marked in the UI.
 - Site login (Basic/Digest auth) moved to M5 (decided 2026-10-28). Until then a `401` fails with a clear message.
-- **Done when:** the integration suite covers every row in §6 except Auth and passes. Downloading through a SOCKS5 proxy and a PAC file works.
+- **Done when:** the integration suite covers every row in §6 except Auth and passes. Downloading through a fixed proxy and through a PAC script works.
 
 ### M3: IPC, host, extension
 - [ ] `protocol/` schema and generated types. Pipe server with the ACL and peer checks.
 - [ ] `omnidm-host` and registration (a dev script for now, the installer in M7).
 - [ ] WXT extension: capture flow (§9.3), header cache, context menus, popup, options.
 - [ ] CLI switched to talk to the running app over the pipe.
+- Firefox is built and linted but not tested live in M3 (decided 2026-10-28: Firefox isn't installed on the dev machine).
 - **Done when:** clicking a download in Chrome, Edge and Firefox lands in OmniDm with cookies and referrer. An expiring link falls back to the browser. Uninstalling the host makes the browser download normally.
 
 ### M4: Queues, scheduler, categories
-- [ ] Queues with concurrency, order and per-queue limits. Scheduler with days/times and wake timers.
+- [ ] Queues with concurrency and order. Scheduler with days/times and wake timers.
 - [ ] Post-queue actions with a 60 s cancellable countdown. Keep-awake.
 - [ ] Category rules (extension, MIME, host → folder).
 - **Done when:** a scheduled queue starts from sleep at the set time, runs 3 at a time, and puts the PC to sleep afterwards.
@@ -581,7 +590,7 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 | Decision | Options | Needed by |
 |---|---|---|
 | FFmpeg distribution | Bundle a build (+~80 MB; GPL or LGPL builds are both compatible with OmniDm's GPL-3.0) / download on first use / user-provided path | M6 |
-| Persist cookies for resume | DPAPI-encrypted until completion (proposed) or memory only | M3 |
-| Minimum browser versions | e.g. last 3 major versions of each | M3 |
+| Persist cookies for resume | **Decided 2026-10-28: DPAPI-encrypted** (current user) in the database until the download completes | ✅ |
+| Minimum browser versions | **Decided 2026-10-28: Chrome/Edge 120+, Firefox 128+** (the ESR line) | ✅ |
 | MSI in addition to NSIS | Only if enterprise deployment matters | M7 |
 | Optional crash reports | None (proposed) or opt-in | M7 |

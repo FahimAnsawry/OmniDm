@@ -11,6 +11,9 @@ repository.workspace = true
 omnidm-core = { version = "0.1.0", path = "../omnidm-core" }
 rusqlite = { version = "0.41.0", features = ["bundled"] }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+
 [dev-dependencies]
 rusqlite = { version = "0.41.0", features = ["bundled"] }
 tempfile = "3.27.0"

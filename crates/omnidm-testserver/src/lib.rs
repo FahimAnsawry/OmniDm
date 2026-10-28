@@ -6,9 +6,14 @@
 //! disk and still check every byte. Each file can be told to misbehave in the ways real
 //! servers do: ignore ranges, change while downloading, slow down, drop the connection,
 //! answer 429/503, send no length, or return an HTML page instead of the file.
+//! [`TestProxy`] adds an HTTP proxy.
+
+mod proxy;
+pub use proxy::{ProxyConnection, TestProxy};
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -18,6 +23,7 @@ use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
+use futures_util::StreamExt;
 use tokio::sync::oneshot;
 
 /// Body chunk size; also the granularity of throttling and connection drops.
@@ -49,6 +55,24 @@ pub struct FileSpec {
     /// Answer `200 text/html` with an error page instead of the file.
     pub html_instead: bool,
     pub content_type: String,
+    /// Sent as `Content-Disposition`, byte for byte (non-ASCII included).
+    pub content_disposition: Option<String>,
+    /// Answer `403` unless the request's `Cookie` header has this `name=value` pair.
+    pub required_cookie: Option<String>,
+    /// Only answer a `POST` with exactly this body: `405` for other methods, `400` for
+    /// another body.
+    pub post_body: Option<Vec<u8>>,
+    /// Serve this many requests, then answer `403` to every later one, as an expired
+    /// signed link does.
+    pub expire_after: Option<u32>,
+    /// Send at most this many responses at once; answer `503` to the rest, as busy
+    /// mirrors do.
+    pub max_concurrent: Option<u32>,
+    /// Throttle the first `n` responses to this many bytes per second, whatever
+    /// `throttle` says: one crawling connection among fast ones.
+    pub slow_first: Option<(u32, u64)>,
+    /// Answer `403` unless the request has this header (name, exact value).
+    pub required_header: Option<(String, String)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,7 +97,54 @@ impl FileSpec {
             fail: None,
             html_instead: false,
             content_type: "application/octet-stream".into(),
+            content_disposition: None,
+            required_cookie: None,
+            post_body: None,
+            expire_after: None,
+            max_concurrent: None,
+            slow_first: None,
+            required_header: None,
         }
+    }
+
+    pub fn require_header(mut self, name: &str, value: &str) -> Self {
+        self.required_header = Some((name.into(), value.into()));
+        self
+    }
+
+    pub fn slow_first(mut self, responses: u32, bytes_per_sec: u64) -> Self {
+        self.slow_first = Some((responses, bytes_per_sec));
+        self
+    }
+
+    pub fn max_concurrent(mut self, responses: u32) -> Self {
+        self.max_concurrent = Some(responses);
+        self
+    }
+
+    pub fn expire_after(mut self, requests: u32) -> Self {
+        self.expire_after = Some(requests);
+        self
+    }
+
+    pub fn post_only(mut self, body: &str) -> Self {
+        self.post_body = Some(body.as_bytes().to_vec());
+        self
+    }
+
+    pub fn require_cookie(mut self, pair: &str) -> Self {
+        self.required_cookie = Some(pair.into());
+        self
+    }
+
+    pub fn content_type(mut self, content_type: &str) -> Self {
+        self.content_type = content_type.into();
+        self
+    }
+
+    pub fn content_disposition(mut self, value: &str) -> Self {
+        self.content_disposition = Some(value.into());
+        self
     }
 
     pub fn seed(mut self, seed: u64) -> Self {
@@ -171,18 +242,43 @@ pub struct RequestRecord {
     pub path: String,
     pub range: Option<String>,
     pub if_range: Option<String>,
+    /// Every header, names in lower case, in the order received.
+    pub headers: Vec<(String, String)>,
+    pub body: Vec<u8>,
+}
+
+impl RequestRecord {
+    /// The first value of header `name` (any case).
+    pub fn header(&self, name: &str) -> Option<&str> {
+        let name = name.to_ascii_lowercase();
+        self.headers
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, v)| v.as_str())
+    }
 }
 
 #[derive(Default)]
 struct Shared {
     files: HashMap<String, FileState>,
-    redirects: HashMap<String, (u16, String)>,
+    /// Path → (status, target, `Set-Cookie` value).
+    redirects: HashMap<String, (u16, String, Option<String>)>,
+    /// Path → (content type, body), served as is.
+    texts: HashMap<String, (String, String)>,
     log: Vec<RequestRecord>,
 }
 
 struct FileState {
     spec: FileSpec,
     failures_sent: u32,
+    /// Requests answered so far (for `expire_after`).
+    served: u32,
+    /// Responses still sending their body (for `max_concurrent`).
+    in_flight: Arc<AtomicU32>,
+    /// Requests refused with `503` for being over `max_concurrent`.
+    refused: u32,
+    /// Responses sent slowly so far (for `slow_first`).
+    slow_sent: u32,
     drops_sent: u32,
     stalls_sent: u32,
 }
@@ -231,10 +327,23 @@ impl TestServer {
             FileState {
                 spec,
                 failures_sent: 0,
+                served: 0,
+                in_flight: Arc::new(AtomicU32::new(0)),
+                refused: 0,
+                slow_sent: 0,
                 drops_sent: 0,
                 stalls_sent: 0,
             },
         );
+    }
+
+    /// Serves `body` at `path` with `content_type` (for small files such as PAC scripts).
+    pub fn set_text(&self, path: &str, content_type: &str, body: &str) {
+        self.shared
+            .lock()
+            .unwrap()
+            .texts
+            .insert(path.into(), (content_type.into(), body.into()));
     }
 
     /// Redirects `from` to `to` (a path or absolute URL) with a 3xx `status`.
@@ -243,7 +352,26 @@ impl TestServer {
             .lock()
             .unwrap()
             .redirects
-            .insert(from.into(), (status, to.into()));
+            .insert(from.into(), (status, to.into(), None));
+    }
+
+    /// Like [`redirect`](Self::redirect), also sending `Set-Cookie: set_cookie`.
+    pub fn redirect_setting_cookie(&self, from: &str, to: &str, status: u16, set_cookie: &str) {
+        self.shared
+            .lock()
+            .unwrap()
+            .redirects
+            .insert(from.into(), (status, to.into(), Some(set_cookie.into())));
+    }
+
+    /// How many requests for `path` were refused for being over `max_concurrent`.
+    pub fn refused(&self, path: &str) -> u32 {
+        self.shared
+            .lock()
+            .unwrap()
+            .files
+            .get(path)
+            .map_or(0, |f| f.refused)
     }
 
     /// Every request received so far, oldest first.
@@ -265,6 +393,17 @@ struct Plan {
     spec: FileSpec,
     range: Option<(u64, u64)>,
     cut: Option<Cut>,
+    /// Counts this response as in flight until its body is dropped.
+    slot: Option<InFlight>,
+}
+
+/// One response counted against `max_concurrent`; released when dropped.
+struct InFlight(Arc<AtomicU32>);
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 /// How a response is cut short after a number of body bytes.
@@ -289,6 +428,7 @@ async fn handle(
     method: Method,
     uri: Uri,
     headers: HeaderMap,
+    body: Bytes,
 ) -> Response {
     let text = |name: header::HeaderName| {
         headers
@@ -307,14 +447,60 @@ async fn handle(
             path: path.clone(),
             range: range_header.clone(),
             if_range: if_range.clone(),
+            headers: headers
+                .iter()
+                .map(|(n, v)| {
+                    (
+                        n.as_str().to_string(),
+                        String::from_utf8_lossy(v.as_bytes()).into_owned(),
+                    )
+                })
+                .collect(),
+            body: body.to_vec(),
         });
-        if let Some((status, to)) = shared.redirects.get(&path) {
+        if let Some((status, to, set_cookie)) = shared.redirects.get(&path) {
             let status = StatusCode::from_u16(*status).unwrap_or(StatusCode::FOUND);
-            return (status, [(header::LOCATION, to.clone())]).into_response();
+            let mut resp = (status, [(header::LOCATION, to.clone())]).into_response();
+            if let Some(value) = set_cookie
+                .as_deref()
+                .and_then(|v| HeaderValue::from_str(v).ok())
+            {
+                resp.headers_mut().insert(header::SET_COOKIE, value);
+            }
+            return resp;
+        }
+        if let Some((content_type, text)) = shared.texts.get(&path) {
+            return ([(header::CONTENT_TYPE, content_type.clone())], text.clone()).into_response();
         }
         let Some(file) = shared.files.get_mut(&path) else {
             return StatusCode::NOT_FOUND.into_response();
         };
+        if let Some(expected) = &file.spec.post_body {
+            if method != Method::POST {
+                return StatusCode::METHOD_NOT_ALLOWED.into_response();
+            }
+            if body.as_ref() != expected.as_slice() {
+                return StatusCode::BAD_REQUEST.into_response();
+            }
+        }
+        if let Some((name, value)) = &file.spec.required_header {
+            let sent = headers.get(name.as_str()).and_then(|v| v.to_str().ok());
+            if sent != Some(value.as_str()) {
+                return StatusCode::FORBIDDEN.into_response();
+            }
+        }
+        if let Some(pair) = &file.spec.required_cookie {
+            let sent = text(header::COOKIE).unwrap_or_default();
+            if !sent.split(';').any(|p| p.trim() == pair) {
+                return StatusCode::FORBIDDEN.into_response();
+            }
+        }
+        if let Some(limit) = file.spec.expire_after {
+            if file.served >= limit {
+                return StatusCode::FORBIDDEN.into_response();
+            }
+            file.served += 1;
+        }
         if let Some(fail) = file.spec.fail
             && file.failures_sent < fail.times
         {
@@ -352,6 +538,25 @@ async fn handle(
             }
             _ => None,
         };
+        let mut slot = None;
+        if let Some(max) = file.spec.max_concurrent
+            && method != Method::HEAD
+        {
+            if file.in_flight.load(Ordering::SeqCst) >= max {
+                file.refused += 1;
+                return StatusCode::SERVICE_UNAVAILABLE.into_response();
+            }
+            file.in_flight.fetch_add(1, Ordering::SeqCst);
+            slot = Some(InFlight(file.in_flight.clone()));
+        }
+        let mut throttle = file.spec.throttle;
+        if let Some((count, rate)) = file.spec.slow_first
+            && file.slow_sent < count
+            && method != Method::HEAD
+        {
+            file.slow_sent += 1;
+            throttle = Some(rate);
+        }
         let mut cut = None;
         if method != Method::HEAD {
             if let Some((bytes, times)) = file.spec.drop_after
@@ -366,7 +571,12 @@ async fn handle(
                 cut = Some(Cut::Stall(bytes));
             }
         }
-        Plan { spec, range, cut }
+        Plan {
+            spec: FileSpec { throttle, ..spec },
+            range,
+            cut,
+            slot,
+        }
     };
 
     file_response(plan, method == Method::HEAD)
@@ -385,6 +595,11 @@ fn file_response(plan: Plan, head: bool) -> Response {
         .header(header::CONTENT_TYPE, &spec.content_type);
     if spec.ranges {
         builder = builder.header(header::ACCEPT_RANGES, "bytes");
+    }
+    if let Some(disposition) = &spec.content_disposition {
+        let value = HeaderValue::from_bytes(disposition.as_bytes())
+            .expect("Content-Disposition has no control characters");
+        builder = builder.header(header::CONTENT_DISPOSITION, value);
     }
     if let Some(etag) = &spec.etag {
         builder = builder.header(header::ETAG, format!("\"{etag}\""));
@@ -405,13 +620,20 @@ fn file_response(plan: Plan, head: bool) -> Response {
     let body = if head || len == 0 {
         Body::empty()
     } else {
-        body_stream(spec.seed, start, len, spec.throttle, plan.cut)
+        body_stream(spec.seed, start, len, spec.throttle, plan.cut, plan.slot)
     };
     builder.body(body).unwrap()
 }
 
 /// Streams `len` generated bytes from `start`, optionally throttled or cut short.
-fn body_stream(seed: u64, start: u64, len: u64, throttle: Option<u64>, cut: Option<Cut>) -> Body {
+fn body_stream(
+    seed: u64,
+    start: u64,
+    len: u64,
+    throttle: Option<u64>,
+    cut: Option<Cut>,
+    slot: Option<InFlight>,
+) -> Body {
     let began = Instant::now();
     let stream = futures_util::stream::unfold(0u64, move |sent| async move {
         if sent >= len {
@@ -442,7 +664,11 @@ fn body_stream(seed: u64, start: u64, len: u64, throttle: Option<u64>, cut: Opti
         fill(seed, start + sent, &mut buf);
         Some((Ok::<_, std::io::Error>(Bytes::from(buf)), sent + n))
     });
-    Body::from_stream(stream)
+    // The slot lives as long as the stream: until the body is sent or the client leaves.
+    Body::from_stream(stream.map(move |chunk| {
+        let _ = &slot;
+        chunk
+    }))
 }
 
 fn if_range_matches(spec: &FileSpec, if_range: Option<&str>) -> bool {

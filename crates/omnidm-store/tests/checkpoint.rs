@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use omnidm_core::engine::{Checkpointer, RemoteInfo};
+use omnidm_core::engine::{Checkpointer, Method, RemoteInfo};
 use omnidm_core::{Segment, SegmentId};
 use omnidm_store::checkpoint::{StoreCheckpointer, resume_from};
 use omnidm_store::{NewDownload, Status, Store};
@@ -13,6 +13,8 @@ fn new_download(url: &str, dir: &str) -> NewDownload {
         referrer: None,
         user_agent: None,
         headers: vec![],
+        method: Method::Get,
+        body: vec![],
     }
 }
 
@@ -25,6 +27,7 @@ fn info() -> RemoteInfo {
         resumable: true,
         content_type: Some("application/zip".into()),
         content_disposition: None,
+        final_method: Method::Get,
     }
 }
 
@@ -180,4 +183,31 @@ fn a_download_never_probed_has_nothing_to_resume() {
         .unwrap();
     let record = store.get_download(id).unwrap().unwrap();
     assert!(resume_from(&record, vec![]).is_none());
+}
+
+#[test]
+fn a_post_download_resumes_with_the_method_it_ended_with() {
+    let mut store = Store::open_in_memory().unwrap();
+    let id = store
+        .insert_download(&NewDownload {
+            method: Method::Post,
+            body: b"id=7".to_vec(),
+            ..new_download("https://e.com/form", r"C:\dl")
+        })
+        .unwrap();
+    StoreCheckpointer {
+        store: &mut store,
+        id,
+        file_name: "a.zip".into(),
+    }
+    .probed(&RemoteInfo {
+        final_method: Method::Post,
+        ..info()
+    })
+    .unwrap();
+    let record = store.get_download(id).unwrap().unwrap();
+
+    let resume = resume_from(&record, vec![seg(0, 0, 999, 300)]).expect("resumable");
+
+    assert_eq!(resume.info.final_method, Method::Post);
 }

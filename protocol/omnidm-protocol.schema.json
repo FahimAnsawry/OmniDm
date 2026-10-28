@@ -1,0 +1,295 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/FahimAnsawry/OmniDm/protocol/omnidm-protocol.schema.json",
+  "title": "OmniDm IPC message",
+  "description": "One message between the browser extension, the native messaging host, the CLI and the OmniDm app (docs/omnidm-plan.md §8). Each message is framed as a 4-byte little-endian length followed by this JSON in UTF-8. Replies carry `re`, the `id` of the request they answer.",
+  "type": "object",
+  "required": ["v", "id", "type", "payload"],
+  "properties": {
+    "v": { "description": "Envelope version.", "const": 1 },
+    "id": { "description": "Unique message id (a UUID).", "type": "string", "minLength": 1, "maxLength": 64 },
+    "re": { "description": "The id of the request this message replies to.", "type": "string", "minLength": 1, "maxLength": 64 },
+    "type": { "type": "string" },
+    "payload": { "type": "object" }
+  },
+  "oneOf": [
+    { "x-direction": "extension → app", "description": "First message on a connection: who the extension is and which protocol versions it speaks.", "properties": { "type": { "const": "hello" }, "payload": { "$ref": "#/$defs/Hello" } } },
+    { "x-direction": "app → extension", "description": "Reply to `hello`: the chosen protocol version and the capture settings.", "properties": { "type": { "const": "helloAck" }, "payload": { "$ref": "#/$defs/HelloAck" } } },
+    { "x-direction": "extension → app", "description": "A download the browser started. The app probes it and answers `captureResult`; the browser keeps the download unless it is accepted.", "properties": { "type": { "const": "capture" }, "payload": { "$ref": "#/$defs/Capture" } } },
+    { "x-direction": "app → extension", "description": "Reply to `capture`.", "properties": { "type": { "const": "captureResult" }, "payload": { "$ref": "#/$defs/CaptureResult" } } },
+    { "x-direction": "extension → app", "description": "Links from \"Download all links\" or \"Download selected links\".", "properties": { "type": { "const": "captureMany" }, "payload": { "$ref": "#/$defs/CaptureMany" } } },
+    { "x-direction": "app → extension", "description": "Reply to `captureMany`.", "properties": { "type": { "const": "captureManyResult" }, "payload": { "$ref": "#/$defs/CaptureManyResult" } } },
+    { "x-direction": "extension → app", "description": "A detected media stream (used from milestone M6).", "properties": { "type": { "const": "media" }, "payload": { "$ref": "#/$defs/Media" } } },
+    { "x-direction": "app → extension", "description": "Asks for the browser's current cookies for a URL, to resume a download after a restart.", "properties": { "type": { "const": "cookiesRequest" }, "payload": { "$ref": "#/$defs/CookiesRequest" } } },
+    { "x-direction": "extension → app", "description": "Reply to `cookiesRequest`.", "properties": { "type": { "const": "cookiesResponse" }, "payload": { "$ref": "#/$defs/CookiesResponse" } } },
+    { "x-direction": "either", "description": "The capture settings changed. The app sends it to every connected extension; an extension sends it when the user edits its options, and the app saves and shares it.", "properties": { "type": { "const": "settingsChanged" }, "payload": { "$ref": "#/$defs/SettingsChanged" } } },
+    { "x-direction": "either", "description": "Keep-alive, every 20 s.", "properties": { "type": { "const": "ping" }, "payload": { "$ref": "#/$defs/Empty" } } },
+    { "x-direction": "either", "description": "Reply to `ping`.", "properties": { "type": { "const": "pong" }, "payload": { "$ref": "#/$defs/Empty" } } },
+    { "x-direction": "either", "description": "A request failed, or the host could not reach the app.", "properties": { "type": { "const": "error" }, "payload": { "$ref": "#/$defs/Error" } } },
+    { "x-direction": "CLI → app", "description": "Adds a download and starts it. A download of the same URL into the same folder that is not finished is resumed instead.", "properties": { "type": { "const": "add" }, "payload": { "$ref": "#/$defs/Add" } } },
+    { "x-direction": "app → CLI", "description": "Reply to `add`. With `watch`, `progress` and `finished` follow.", "properties": { "type": { "const": "addResult" }, "payload": { "$ref": "#/$defs/AddResult" } } },
+    { "x-direction": "app → CLI", "description": "Progress of a watched download.", "properties": { "type": { "const": "progress" }, "payload": { "$ref": "#/$defs/Progress" } } },
+    { "x-direction": "app → CLI", "description": "A watched download stopped: completed, paused or failed.", "properties": { "type": { "const": "finished" }, "payload": { "$ref": "#/$defs/Finished" } } },
+    { "x-direction": "CLI → app", "description": "Pauses a download; its `finished` follows once progress is saved.", "properties": { "type": { "const": "pause" }, "payload": { "$ref": "#/$defs/Pause" } } },
+    { "x-direction": "CLI → app", "description": "Lists every download.", "properties": { "type": { "const": "list" }, "payload": { "$ref": "#/$defs/Empty" } } },
+    { "x-direction": "app → CLI", "description": "Reply to `list`.", "properties": { "type": { "const": "listResult" }, "payload": { "$ref": "#/$defs/ListResult" } } },
+    { "x-direction": "CLI → app", "description": "Brings the app's window to the front (sent when OmniDm.exe is started again).", "properties": { "type": { "const": "show" }, "payload": { "$ref": "#/$defs/Empty" } } },
+    { "x-direction": "app → CLI", "description": "A request without its own reply type succeeded.", "properties": { "type": { "const": "ok" }, "payload": { "$ref": "#/$defs/Empty" } } }
+  ],
+  "$defs": {
+    "Empty": {
+      "description": "No content.",
+      "type": "object",
+      "properties": {}
+    },
+    "Header": {
+      "description": "One HTTP request header.",
+      "type": "object",
+      "required": ["name", "value"],
+      "properties": {
+        "name": { "type": "string" },
+        "value": { "type": "string" }
+      }
+    },
+    "Cookie": {
+      "description": "A browser cookie, as the extension's cookies API reports it.",
+      "type": "object",
+      "required": ["name", "value", "domain", "path", "secure", "hostOnly"],
+      "properties": {
+        "name": { "type": "string" },
+        "value": { "type": "string" },
+        "domain": { "description": "The cookie's domain; a leading dot is ignored.", "type": "string" },
+        "path": { "type": "string" },
+        "secure": { "type": "boolean" },
+        "hostOnly": { "description": "Sent only to `domain` itself, not to its subdomains.", "type": "boolean" },
+        "expirationDate": { "description": "Unix time in seconds; absent for a session cookie.", "type": "number" }
+      }
+    },
+    "Browser": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "description": "For example `chrome`, `edge` or `firefox`.", "type": "string" },
+        "version": { "type": "string" }
+      }
+    },
+    "HttpMethod": {
+      "type": "string",
+      "enum": ["GET", "POST"]
+    },
+    "CaptureSettings": {
+      "description": "Which browser downloads OmniDm takes over.",
+      "type": "object",
+      "required": ["enabled", "minSize", "fileTypes", "excludedSites", "capturePrivate"],
+      "properties": {
+        "enabled": { "description": "Capture is on.", "type": "boolean" },
+        "minSize": { "description": "Downloads smaller than this many bytes stay in the browser (0: no minimum).", "type": "integer", "format": "uint64", "minimum": 0 },
+        "fileTypes": { "description": "File extensions to capture, lower case without the dot. Empty: every type.", "type": "array", "items": { "type": "string" } },
+        "excludedSites": { "description": "Hosts never captured. `example.com` also covers its subdomains.", "type": "array", "items": { "type": "string" } },
+        "capturePrivate": { "description": "Capture downloads from private windows too.", "type": "boolean" }
+      }
+    },
+    "Hello": {
+      "type": "object",
+      "required": ["extensionVersion", "browser", "protocols"],
+      "properties": {
+        "extensionVersion": { "type": "string" },
+        "browser": { "$ref": "#/$defs/Browser" },
+        "protocols": { "description": "Protocol versions the extension supports.", "type": "array", "items": { "type": "integer", "format": "uint32", "minimum": 0 } }
+      }
+    },
+    "HelloAck": {
+      "type": "object",
+      "required": ["appVersion", "protocol", "settings"],
+      "properties": {
+        "appVersion": { "type": "string" },
+        "protocol": { "description": "The protocol version both sides use from now on.", "type": "integer", "format": "uint32", "minimum": 0 },
+        "settings": { "$ref": "#/$defs/CaptureSettings" }
+      }
+    },
+    "Capture": {
+      "type": "object",
+      "required": ["url", "method", "headers", "cookies", "private"],
+      "properties": {
+        "url": { "description": "The URL the browser downloads.", "type": "string" },
+        "finalUrl": { "description": "The URL after redirects, when the browser knows it.", "type": "string" },
+        "method": { "$ref": "#/$defs/HttpMethod" },
+        "body": { "description": "The form data of a POST, base64-encoded.", "type": "string" },
+        "referrer": { "type": "string" },
+        "pageUrl": { "description": "The page the download started from.", "type": "string" },
+        "headers": { "description": "The browser's request headers, without `Cookie`.", "type": "array", "items": { "$ref": "#/$defs/Header" } },
+        "cookies": { "description": "The browser's cookies for the URL (partitioned ones included).", "type": "array", "items": { "$ref": "#/$defs/Cookie" } },
+        "suggestedName": { "description": "The file name the browser chose, if any.", "type": "string" },
+        "mime": { "type": "string" },
+        "size": { "description": "The size in bytes, when the browser knows it.", "type": "integer", "format": "uint64", "minimum": 0 },
+        "private": { "description": "Started in a private window.", "type": "boolean" },
+        "browserDownloadId": { "description": "The browser's id for the download; absent for a link sent from the context menu.", "type": "integer", "format": "uint32", "minimum": 0 }
+      }
+    },
+    "RejectReason": {
+      "type": "string",
+      "enum": ["excluded", "tooSmall", "probeFailed", "userCancelled", "invalid"]
+    },
+    "CaptureResult": {
+      "type": "object",
+      "required": ["accepted"],
+      "properties": {
+        "accepted": { "description": "OmniDm took the download; the browser may cancel its copy.", "type": "boolean" },
+        "reason": { "description": "Why it was rejected.", "$ref": "#/$defs/RejectReason" },
+        "httpStatus": { "description": "With `probeFailed`: the server's HTTP status, if it answered.", "type": "integer", "format": "uint16", "minimum": 0 },
+        "message": { "description": "A human-readable explanation.", "type": "string" },
+        "downloadId": { "description": "OmniDm's id for an accepted download.", "type": "integer", "format": "int64" }
+      }
+    },
+    "Link": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": { "type": "string" },
+        "text": { "description": "The link's text on the page.", "type": "string" }
+      }
+    },
+    "CaptureMany": {
+      "type": "object",
+      "required": ["links", "headers", "cookies", "private"],
+      "properties": {
+        "links": { "type": "array", "items": { "$ref": "#/$defs/Link" } },
+        "referrer": { "type": "string" },
+        "pageUrl": { "type": "string" },
+        "headers": { "description": "Headers to send with every link, such as `User-Agent`.", "type": "array", "items": { "$ref": "#/$defs/Header" } },
+        "cookies": { "description": "The browser's cookies for the links' sites.", "type": "array", "items": { "$ref": "#/$defs/Cookie" } },
+        "private": { "type": "boolean" }
+      }
+    },
+    "CaptureManyResult": {
+      "type": "object",
+      "required": ["added", "skipped"],
+      "properties": {
+        "added": { "type": "integer", "format": "uint32", "minimum": 0 },
+        "skipped": { "description": "Links left out: not http(s), duplicates, or not a captured file type.", "type": "integer", "format": "uint32", "minimum": 0 }
+      }
+    },
+    "MediaKind": {
+      "type": "string",
+      "enum": ["hls", "dash", "file"]
+    },
+    "Media": {
+      "type": "object",
+      "required": ["kind", "url", "headers"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/MediaKind" },
+        "url": { "type": "string" },
+        "pageUrl": { "type": "string" },
+        "headers": { "type": "array", "items": { "$ref": "#/$defs/Header" } },
+        "title": { "type": "string" }
+      }
+    },
+    "CookiesRequest": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": { "type": "string" }
+      }
+    },
+    "CookiesResponse": {
+      "type": "object",
+      "required": ["cookies"],
+      "properties": {
+        "cookies": { "type": "array", "items": { "$ref": "#/$defs/Cookie" } }
+      }
+    },
+    "SettingsChanged": {
+      "type": "object",
+      "required": ["settings"],
+      "properties": {
+        "settings": { "$ref": "#/$defs/CaptureSettings" }
+      }
+    },
+    "ErrorCode": {
+      "type": "string",
+      "enum": ["badRequest", "tooLarge", "unsupported", "notFound", "versionMismatch", "appNotRunning", "internal"]
+    },
+    "Error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "$ref": "#/$defs/ErrorCode" },
+        "message": { "type": "string" }
+      }
+    },
+    "Add": {
+      "type": "object",
+      "required": ["url", "headers", "cookies", "watch"],
+      "properties": {
+        "url": { "type": "string" },
+        "dir": { "description": "Absolute folder to save into; the app's download folder when absent.", "type": "string" },
+        "fileName": { "type": "string" },
+        "connections": { "type": "integer", "format": "uint32", "minimum": 1 },
+        "headers": { "type": "array", "items": { "$ref": "#/$defs/Header" } },
+        "cookies": { "description": "`name=value; name2=value2` cookies for the URL's site. Kept in memory only.", "type": "array", "items": { "type": "string" } },
+        "data": { "description": "Form data: the download is fetched with a POST carrying it.", "type": "string" },
+        "watch": { "description": "Send `progress` and `finished` for this download on this connection.", "type": "boolean" }
+      }
+    },
+    "AddResult": {
+      "type": "object",
+      "required": ["downloadId", "resumed"],
+      "properties": {
+        "downloadId": { "type": "integer", "format": "int64" },
+        "resumed": { "description": "An unfinished download was continued (or is already running).", "type": "boolean" }
+      }
+    },
+    "Progress": {
+      "type": "object",
+      "required": ["downloadId", "downloaded", "speed", "connections"],
+      "properties": {
+        "downloadId": { "type": "integer", "format": "int64" },
+        "downloaded": { "type": "integer", "format": "uint64", "minimum": 0 },
+        "total": { "type": "integer", "format": "uint64", "minimum": 0 },
+        "speed": { "description": "Bytes per second.", "type": "integer", "format": "uint64", "minimum": 0 },
+        "connections": { "type": "integer", "format": "uint32", "minimum": 0 }
+      }
+    },
+    "DownloadStatus": {
+      "type": "string",
+      "enum": ["queued", "probing", "running", "paused", "completed", "failed", "cancelled"]
+    },
+    "Finished": {
+      "type": "object",
+      "required": ["downloadId", "status"],
+      "properties": {
+        "downloadId": { "type": "integer", "format": "int64" },
+        "status": { "$ref": "#/$defs/DownloadStatus" },
+        "path": { "description": "Where the completed file was saved.", "type": "string" },
+        "error": { "description": "Why it failed, or why it paused by itself (an expired link).", "type": "string" }
+      }
+    },
+    "Pause": {
+      "type": "object",
+      "required": ["downloadId"],
+      "properties": {
+        "downloadId": { "type": "integer", "format": "int64" }
+      }
+    },
+    "DownloadSummary": {
+      "type": "object",
+      "required": ["downloadId", "url", "saveDir", "status"],
+      "properties": {
+        "downloadId": { "type": "integer", "format": "int64" },
+        "url": { "type": "string" },
+        "saveDir": { "type": "string" },
+        "fileName": { "type": "string" },
+        "status": { "$ref": "#/$defs/DownloadStatus" },
+        "totalSize": { "type": "integer", "format": "uint64", "minimum": 0 },
+        "error": { "type": "string" }
+      }
+    },
+    "ListResult": {
+      "type": "object",
+      "required": ["downloads"],
+      "properties": {
+        "downloads": { "type": "array", "items": { "$ref": "#/$defs/DownloadSummary" } }
+      }
+    }
+  }
+}

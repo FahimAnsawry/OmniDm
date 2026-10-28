@@ -1,0 +1,26 @@
+[package]
+name = "omnidm-service"
+description = "The OmniDm app's backend: runs downloads and answers the extension and the CLI."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+base64 = "0.22"
+omnidm-core = { version = "0.1.0", path = "../omnidm-core" }
+omnidm-ipc = { version = "0.1.0", path = "../omnidm-ipc" }
+omnidm-net = { version = "0.1.0", path = "../omnidm-net" }
+omnidm-store = { version = "0.1.0", path = "../omnidm-store" }
+fastrand = "2.5.0"
+reqwest = "0.13.5"
+serde_json = "1"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }
+tokio-util = "0.7.20"
+
+[dev-dependencies]
+base64 = "0.22"
+fastrand = "2.5.0"
+omnidm-testserver = { path = "../omnidm-testserver" }
+tempfile = "3.27.0"

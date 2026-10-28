@@ -1,16 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The `omnidm` command: downloads in the terminal using the engine and the store.
+//! The `omnidm` command: downloads through the running OmniDm app, or on its own (with the
+//! engine and the store) when the app isn't running.
+
+mod remote;
+pub use remote::{get_via_app, list_via_app};
 
 use std::fmt;
 use std::path::{Path, PathBuf};
 
 use omnidm_core::RampPolicy;
-use omnidm_core::engine::{Download, EngineConfig, Event, Outcome, Request, download};
-use omnidm_net::naming::{file_name_from_url, sanitize_file_name};
-use omnidm_store::checkpoint::{StoreCheckpointer, resume_from};
-use omnidm_store::{NewDownload, Status, Store};
-use tokio::sync::mpsc;
+use omnidm_core::engine::{EngineConfig, Event, Method, Request};
+use omnidm_net::cookies::{CookieJar, Url};
+use omnidm_net::naming::sanitize_file_name;
+use omnidm_service::job::{Job, JobError, JobOutcome, run_job};
+pub use omnidm_service::job::{PART_SUFFIX, unique_path};
+use omnidm_store::checkpoint::resume_from;
+use omnidm_store::{NewDownload, Store};
 use tokio_util::sync::CancellationToken;
 
 /// What `omnidm get` should download, and where.
@@ -21,7 +27,13 @@ pub struct GetOptions {
     pub output: Option<String>,
     pub dir: PathBuf,
     pub connections: u32,
+    /// Extra request headers. A `Cookie` header is used like `cookies` and never saved.
     pub headers: Vec<(String, String)>,
+    /// `name=value; name2=value2` cookies for the URL's site. Never saved, so a resumed
+    /// download needs them again.
+    pub cookies: Vec<String>,
+    /// Form data: the download is fetched with a `POST` carrying it.
+    pub data: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,6 +49,8 @@ pub enum CliError {
     Engine(omnidm_core::engine::EngineError),
     Io(std::io::Error),
     Http(String),
+    /// Reported by the running OmniDm app.
+    App(String),
 }
 
 impl fmt::Display for CliError {
@@ -46,6 +60,7 @@ impl fmt::Display for CliError {
             Self::Engine(e) => write!(f, "{e}"),
             Self::Io(e) => write!(f, "{e}"),
             Self::Http(e) => write!(f, "{e}"),
+            Self::App(e) => write!(f, "{e}"),
         }
     }
 }
@@ -77,39 +92,73 @@ pub async fn get(
     let dir = std::path::absolute(&opts.dir)?;
     let dir_text = dir.to_string_lossy().into_owned();
     let mut store = Store::open(&data_dir.join(DATABASE_FILE))?;
-
-    let (id, file_name, headers, resume) = match store.find_unfinished(&opts.url, &dir_text)? {
-        Some(record) => {
-            let segments = store.load_segments(record.id)?;
-            let name = record
-                .file_name
-                .clone()
-                .unwrap_or_else(|| file_name_from_url(&opts.url));
-            let resume = resume_from(&record, segments);
-            (record.id, name, record.headers, resume)
+    let (cookie_headers, mut saved_headers): (Vec<_>, Vec<_>) = opts
+        .headers
+        .iter()
+        .cloned()
+        .partition(|(name, _)| name.eq_ignore_ascii_case("cookie"));
+    let has_type = saved_headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("content-type"));
+    if opts.data.is_some() && !has_type {
+        saved_headers.push((
+            "Content-Type".into(),
+            "application/x-www-form-urlencoded".into(),
+        ));
+    }
+    let cookies = CookieJar::new();
+    if let Ok(url) = Url::parse(&opts.url) {
+        let given = opts
+            .cookies
+            .iter()
+            .chain(cookie_headers.iter().map(|(_, v)| v));
+        for pairs in given {
+            cookies.add_pairs(&url, pairs);
         }
-        None => {
-            let name = match &opts.output {
-                Some(name) => sanitize_file_name(name),
-                None => file_name_from_url(&opts.url),
-            };
-            let id = store.insert_download(&NewDownload {
-                url: opts.url.clone(),
-                save_dir: dir_text.clone(),
-                file_name: Some(name.clone()),
-                referrer: None,
-                user_agent: None,
-                headers: opts.headers.clone(),
-            })?;
-            (id, name, opts.headers.clone(), None)
-        }
-    };
+    }
 
-    let part = dir.join(format!("{file_name}{PART_SUFFIX}"));
+    // A download's name is the user's choice, or the one picked when it was first probed.
+    let (id, known_name, headers, method, body, resume) =
+        match store.find_unfinished(&opts.url, &dir_text)? {
+            Some(record) => {
+                let segments = store.load_segments(record.id)?;
+                let resume = resume_from(&record, segments);
+                (
+                    record.id,
+                    record.file_name,
+                    record.headers,
+                    record.method,
+                    record.body,
+                    resume,
+                )
+            }
+            None => {
+                let name = opts.output.as_deref().map(sanitize_file_name);
+                let (method, body) = match &opts.data {
+                    Some(data) => (Method::Post, data.as_bytes().to_vec()),
+                    None => (Method::Get, Vec::new()),
+                };
+                let id = store.insert_download(&NewDownload {
+                    url: opts.url.clone(),
+                    save_dir: dir_text.clone(),
+                    file_name: name.clone(),
+                    referrer: None,
+                    user_agent: None,
+                    headers: saved_headers.clone(),
+                    method,
+                    body: body.clone(),
+                })?;
+                (id, name, saved_headers, method, body, None)
+            }
+        };
+
     let client = omnidm_net::download_client().map_err(|e| CliError::Http(e.to_string()))?;
     let request = Request {
         url: opts.url.clone(),
+        method,
+        body,
         headers,
+        cookies,
     };
     let config = EngineConfig {
         ramp: RampPolicy {
@@ -118,62 +167,33 @@ pub async fn get(
         },
         ..EngineConfig::default()
     };
-    store.set_status(id, Status::Running, None)?;
+    // A download whose name is known resumes; otherwise it starts with a probe.
+    let resume = resume.filter(|_| known_name.is_some());
+    drop(store);
 
-    let (tx, mut rx) = mpsc::unbounded_channel();
-    let result = {
-        let mut checkpointer = StoreCheckpointer {
-            store: &mut store,
-            id,
-            file_name: file_name.clone(),
-        };
-        let job = download(
-            Download {
-                client: &client,
-                request: &request,
-                part_path: &part,
-                resume,
-                config: &config,
-                events: Some(tx),
-                cancel,
-            },
-            &mut checkpointer,
-        );
-        tokio::pin!(job);
-        loop {
-            tokio::select! {
-                result = &mut job => break result,
-                Some(event) = rx.recv() => progress(&event),
-            }
-        }
+    let job = Job {
+        database: data_dir.join(DATABASE_FILE),
+        id,
+        dir,
+        file_name: known_name,
+        probe: None,
+        resume,
+        client,
+        request,
+        config,
+        cancel,
     };
-    while let Ok(event) = rx.try_recv() {
-        progress(&event);
-    }
-
-    match result {
-        Ok(Outcome::Completed { .. }) => {
-            let target = unique_path(&dir, &file_name, Path::exists);
-            std::fs::rename(&part, &target)?;
-            store.set_status(id, Status::Completed, None)?;
-            Ok(GetResult::Completed(target))
-        }
-        Ok(Outcome::Paused) => {
-            store.set_status(id, Status::Paused, None)?;
-            Ok(GetResult::Paused)
-        }
-        Err(e) => {
-            store.set_status(id, Status::Failed, Some(&e.to_string()))?;
-            Err(CliError::Engine(e))
-        }
+    match run_job(job, &mut progress).await {
+        Ok(JobOutcome::Completed(path)) => Ok(GetResult::Completed(path)),
+        Ok(JobOutcome::Paused) => Ok(GetResult::Paused),
+        Err(JobError::Engine(e)) => Err(CliError::Engine(e)),
+        Err(JobError::Store(e)) => Err(CliError::Store(e)),
+        Err(JobError::Io(e)) => Err(CliError::Io(e)),
     }
 }
 
 /// Name of the database file inside the data folder.
 pub const DATABASE_FILE: &str = "omnidm.db";
-
-/// Appended to a file's name while it is being downloaded.
-pub const PART_SUFFIX: &str = ".omnidm-part";
 
 /// Where OmniDm keeps its database: `OMNIDM_DATA_DIR` if set, else `%APPDATA%\OmniDm`.
 pub fn data_dir() -> PathBuf {
@@ -184,25 +204,6 @@ pub fn data_dir() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
     base.join("OmniDm")
-}
-
-/// `dir/name`, or `dir/name (1).ext`, `dir/name (2).ext`… if that is taken.
-pub fn unique_path(dir: &Path, name: &str, exists: impl Fn(&Path) -> bool) -> PathBuf {
-    let first = dir.join(name);
-    if !exists(&first) {
-        return first;
-    }
-    let (stem, extension) = match name.rsplit_once('.') {
-        Some((stem, ext)) if !stem.is_empty() => (stem, Some(ext)),
-        _ => (name, None),
-    };
-    (1u32..)
-        .map(|n| match extension {
-            Some(ext) => dir.join(format!("{stem} ({n}).{ext}")),
-            None => dir.join(format!("{stem} ({n})")),
-        })
-        .find(|candidate| !exists(candidate))
-        .expect("some number is free")
 }
 
 /// Parses a `-H "Name: value"` argument.

@@ -10,16 +10,20 @@ use std::fmt;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use omnidm_core::engine::Method;
 use omnidm_core::{Segment, SegmentId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 pub mod checkpoint;
+#[cfg(windows)]
+mod dpapi;
 
 /// Schema version this build creates and understands.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// Each entry upgrades the schema from version `index` to `index + 1`.
-const MIGRATIONS: [&str; SCHEMA_VERSION as usize] = [r#"
+const MIGRATIONS: [&str; SCHEMA_VERSION as usize] = [
+    r#"
     CREATE TABLE downloads (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         url           TEXT    NOT NULL,
@@ -52,10 +56,25 @@ const MIGRATIONS: [&str; SCHEMA_VERSION as usize] = [r#"
         written     INTEGER NOT NULL,
         PRIMARY KEY (download_id, segment_id)
     );
-"#];
+"#,
+    // 2: POST downloads. Downloads probed before this were all GET.
+    r#"
+    ALTER TABLE downloads ADD COLUMN method TEXT NOT NULL DEFAULT 'GET';
+    ALTER TABLE downloads ADD COLUMN body BLOB;
+    ALTER TABLE downloads ADD COLUMN final_method TEXT;
+    UPDATE downloads SET final_method = 'GET' WHERE final_url IS NOT NULL;
+"#,
+    // 3: cookies of unfinished downloads, encrypted for the current Windows user.
+    r#"
+    CREATE TABLE secrets (
+        download_id INTEGER PRIMARY KEY REFERENCES downloads(id) ON DELETE CASCADE,
+        cookies     BLOB    NOT NULL
+    );
+"#,
+];
 
 const DOWNLOAD_COLUMNS: &str = "id, url, save_dir, file_name, referrer, user_agent, final_url, \
-     total_size, etag, last_modified, resumable, status, error, created_at, completed_at";
+     total_size, etag, last_modified, resumable, status, error, created_at, completed_at,      method, body, final_method";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DownloadId(pub i64);
@@ -71,6 +90,13 @@ pub enum Status {
     Cancelled,
 }
 
+impl Status {
+    /// The name stored in the database: `queued`, `running`, `completed`…
+    pub fn as_str(self) -> &'static str {
+        status_name(self)
+    }
+}
+
 /// What a caller provides to add a download.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewDownload {
@@ -82,6 +108,9 @@ pub struct NewDownload {
     pub user_agent: Option<String>,
     /// Extra request headers as `(name, value)` pairs.
     pub headers: Vec<(String, String)>,
+    pub method: Method,
+    /// The form data of a `POST`; empty for a `GET`.
+    pub body: Vec<u8>,
 }
 
 /// What the probe learned about the remote file.
@@ -93,6 +122,8 @@ pub struct ProbeResult {
     pub etag: Option<String>,
     pub last_modified: Option<String>,
     pub resumable: bool,
+    /// The method after redirects.
+    pub final_method: Method,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -104,7 +135,11 @@ pub struct DownloadRecord {
     pub referrer: Option<String>,
     pub user_agent: Option<String>,
     pub headers: Vec<(String, String)>,
+    pub method: Method,
+    pub body: Vec<u8>,
     pub final_url: Option<String>,
+    /// The method after redirects; `None` until probed.
+    pub final_method: Option<Method>,
     pub total_size: Option<u64>,
     pub etag: Option<String>,
     pub last_modified: Option<String>,
@@ -128,6 +163,8 @@ pub enum StoreError {
     Corrupt(String),
     /// A size or offset is too large to store.
     OutOfRange(u64),
+    /// Not available on this operating system.
+    Unsupported(&'static str),
 }
 
 impl fmt::Display for StoreError {
@@ -140,6 +177,7 @@ impl fmt::Display for StoreError {
             ),
             Self::Corrupt(what) => write!(f, "database contains invalid data: {what}"),
             Self::OutOfRange(v) => write!(f, "value {v} is too large to store"),
+            Self::Unsupported(what) => write!(f, "{what} is not supported on this system"),
         }
     }
 }
@@ -192,8 +230,9 @@ impl Store {
     pub fn insert_download(&mut self, new: &NewDownload) -> Result<DownloadId> {
         let tx = self.conn.transaction()?;
         tx.execute(
-            "INSERT INTO downloads (url, save_dir, file_name, referrer, user_agent, status, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO downloads (url, save_dir, file_name, referrer, user_agent, status,
+                                    created_at, method, body)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 new.url,
                 new.save_dir,
@@ -202,6 +241,8 @@ impl Store {
                 new.user_agent,
                 status_name(Status::Queued),
                 unix_now(),
+                new.method.as_str(),
+                (!new.body.is_empty()).then_some(&new.body),
             ],
         )?;
         let id = tx.last_insert_rowid();
@@ -272,7 +313,7 @@ impl Store {
         self.conn.execute(
             "UPDATE downloads
              SET final_url = ?2, file_name = ?3, total_size = ?4, etag = ?5,
-                 last_modified = ?6, resumable = ?7
+                 last_modified = ?6, resumable = ?7, final_method = ?8
              WHERE id = ?1",
             params![
                 id.0,
@@ -282,6 +323,7 @@ impl Store {
                 probe.etag,
                 probe.last_modified,
                 probe.resumable,
+                probe.final_method.as_str(),
             ],
         )?;
         Ok(())
@@ -296,11 +338,42 @@ impl Store {
     ) -> Result<()> {
         let error = error.filter(|_| status == Status::Failed);
         let completed_at = (status == Status::Completed).then(unix_now);
-        self.conn.execute(
+        let tx = self.conn.transaction()?;
+        tx.execute(
             "UPDATE downloads SET status = ?2, error = ?3, completed_at = ?4 WHERE id = ?1",
             params![id.0, status_name(status), error, completed_at],
         )?;
+        // A finished download needs its cookies no more.
+        if status == Status::Completed {
+            tx.execute("DELETE FROM secrets WHERE download_id = ?1", [id.0])?;
+        }
+        tx.commit()?;
         Ok(())
+    }
+
+    /// Saves a download's cookies (any serialised form), encrypted for the current
+    /// Windows user. They are deleted when the download completes or is deleted.
+    pub fn save_cookies(&mut self, id: DownloadId, cookies: &[u8]) -> Result<()> {
+        let sealed = seal(cookies)?;
+        self.conn.execute(
+            "INSERT INTO secrets (download_id, cookies) VALUES (?1, ?2)
+             ON CONFLICT (download_id) DO UPDATE SET cookies = excluded.cookies",
+            params![id.0, sealed],
+        )?;
+        Ok(())
+    }
+
+    /// The cookies saved with [`save_cookies`](Self::save_cookies), decrypted.
+    pub fn load_cookies(&self, id: DownloadId) -> Result<Option<Vec<u8>>> {
+        let sealed: Option<Vec<u8>> = self
+            .conn
+            .query_row(
+                "SELECT cookies FROM secrets WHERE download_id = ?1",
+                [id.0],
+                |r| r.get(0),
+            )
+            .optional()?;
+        sealed.map(|sealed| unseal(&sealed)).transpose()
     }
 
     /// Replaces the stored segments of a download in one transaction.
@@ -372,6 +445,31 @@ impl Store {
     }
 }
 
+#[cfg(windows)]
+fn seal(plain: &[u8]) -> Result<Vec<u8>> {
+    dpapi::protect(plain).map_err(|e| StoreError::Corrupt(format!("can't encrypt cookies: {e}")))
+}
+
+#[cfg(windows)]
+fn unseal(sealed: &[u8]) -> Result<Vec<u8>> {
+    dpapi::unprotect(sealed)
+        .map_err(|e| StoreError::Corrupt(format!("saved cookies can't be decrypted: {e}")))
+}
+
+#[cfg(not(windows))]
+fn seal(_plain: &[u8]) -> Result<Vec<u8>> {
+    Err(StoreError::Unsupported("saving cookies"))
+}
+
+#[cfg(not(windows))]
+fn unseal(_sealed: &[u8]) -> Result<Vec<u8>> {
+    Err(StoreError::Unsupported("saving cookies"))
+}
+
+fn parse_method(name: &str) -> Result<Method> {
+    Method::from_name(name).ok_or_else(|| StoreError::Corrupt(format!("unknown method {name:?}")))
+}
+
 fn migrate(conn: &mut Connection) -> Result<()> {
     let found: u32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
     if found > SCHEMA_VERSION {
@@ -394,6 +492,9 @@ fn migrate(conn: &mut Connection) -> Result<()> {
 fn read_download(r: &Row<'_>) -> rusqlite::Result<Result<DownloadRecord>> {
     let total_size: Option<i64> = r.get(7)?;
     let status: String = r.get(11)?;
+    let method: String = r.get(15)?;
+    let body: Option<Vec<u8>> = r.get(16)?;
+    let final_method: Option<String> = r.get(17)?;
     let id = DownloadId(r.get(0)?);
     let record = (|| {
         Ok(DownloadRecord {
@@ -404,7 +505,10 @@ fn read_download(r: &Row<'_>) -> rusqlite::Result<Result<DownloadRecord>> {
             referrer: r.get(4)?,
             user_agent: r.get(5)?,
             headers: Vec::new(),
+            method: parse_method(&method)?,
+            body: body.unwrap_or_default(),
             final_url: r.get(6)?,
+            final_method: final_method.as_deref().map(parse_method).transpose()?,
             total_size: total_size.map(to_u64).transpose()?,
             etag: r.get(8)?,
             last_modified: r.get(9)?,

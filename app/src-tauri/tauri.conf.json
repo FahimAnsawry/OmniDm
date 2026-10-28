@@ -17,7 +17,9 @@
         "width": 1100,
         "height": 700,
         "minWidth": 720,
-        "minHeight": 480
+        "minHeight": 480,
+        "label": "main",
+        "visible": false
       }
     ],
     "security": {
@@ -26,7 +28,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "license": "GPL-3.0-or-later",
     "licenseFile": "../../LICENSE",
     "windows": {

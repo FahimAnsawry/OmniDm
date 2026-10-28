@@ -1,0 +1,4 @@
+# Generated TypeScript protocol types, shared by the extension and the app's UI
+# (see crates/omnidm-ipc).
+[env]
+TS_RS_EXPORT_DIR = { value = "protocol/ts", relative = true }

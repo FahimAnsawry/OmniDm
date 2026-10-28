@@ -54,6 +54,36 @@ fn generated_content_is_the_same_whatever_the_start_offset() {
 // --- normal behaviour ---
 
 #[tokio::test]
+async fn file_type_and_disposition_are_sent_as_given() {
+    let spec = FileSpec::new(SIZE)
+        .content_type("application/zip")
+        .content_disposition("attachment; filename=\"বই.zip\"");
+    let server = server_with("/download.php", spec).await;
+    let resp = client()
+        .get(server.url("/download.php"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        header_str(&resp, header::CONTENT_TYPE).as_deref(),
+        Some("application/zip")
+    );
+    // Raw UTF-8 bytes, the way many servers send them.
+    let disposition = resp.headers().get(header::CONTENT_DISPOSITION).unwrap();
+    assert_eq!(
+        disposition.as_bytes(),
+        "attachment; filename=\"বই.zip\"".as_bytes()
+    );
+}
+
+#[tokio::test]
+async fn no_disposition_is_sent_by_default() {
+    let server = server_with("/f.bin", FileSpec::new(SIZE)).await;
+    let resp = client().get(server.url("/f.bin")).send().await.unwrap();
+    assert!(resp.headers().get(header::CONTENT_DISPOSITION).is_none());
+}
+
+#[tokio::test]
 async fn full_get_returns_the_whole_file_with_its_length() {
     let server = server_with("/f.bin", FileSpec::new(SIZE)).await;
     let resp = client().get(server.url("/f.bin")).send().await.unwrap();
@@ -324,4 +354,179 @@ async fn requests_are_logged_with_their_range_headers() {
     assert_eq!(log[0].path, "/f.bin");
     assert_eq!(log[0].range.as_deref(), Some("bytes=5-9"));
     assert_eq!(log[0].if_range.as_deref(), Some("\"v1\""));
+}
+
+#[tokio::test]
+async fn every_request_header_is_logged() {
+    let server = server_with("/f.bin", FileSpec::new(SIZE)).await;
+    client()
+        .get(server.url("/f.bin"))
+        .header("Authorization", "Bearer abc")
+        .header("X-Custom", "1")
+        .send()
+        .await
+        .unwrap();
+    let log = server.requests();
+    assert_eq!(log[0].header("authorization"), Some("Bearer abc"));
+    assert_eq!(log[0].header("X-CUSTOM"), Some("1"));
+    assert_eq!(log[0].header("cookie"), None);
+}
+
+#[tokio::test]
+async fn a_cookie_protected_file_needs_its_cookie() {
+    let server = server_with("/f.bin", FileSpec::new(SIZE).require_cookie("session=abc")).await;
+    let without = client().get(server.url("/f.bin")).send().await.unwrap();
+    assert_eq!(without.status(), StatusCode::FORBIDDEN);
+    let wrong = client()
+        .get(server.url("/f.bin"))
+        .header(header::COOKIE, "session=nope")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(wrong.status(), StatusCode::FORBIDDEN);
+    let with = client()
+        .get(server.url("/f.bin"))
+        .header(header::COOKIE, "theme=dark; session=abc")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(with.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_redirect_can_set_a_cookie() {
+    let server = TestServer::start().await.unwrap();
+    server.redirect_setting_cookie("/login", "/f.bin", 302, "session=abc; Path=/");
+    let resp = client().get(server.url("/login")).send().await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FOUND);
+    assert_eq!(
+        header_str(&resp, header::SET_COOKIE).as_deref(),
+        Some("session=abc; Path=/")
+    );
+    assert_eq!(
+        header_str(&resp, header::LOCATION).as_deref(),
+        Some("/f.bin")
+    );
+}
+
+#[tokio::test]
+async fn a_post_only_file_needs_a_post_with_its_form_data() {
+    let server = server_with("/dl", FileSpec::new(SIZE).post_only("id=7&agree=1")).await;
+    let get = client().get(server.url("/dl")).send().await.unwrap();
+    assert_eq!(get.status(), StatusCode::METHOD_NOT_ALLOWED);
+    let wrong = client()
+        .post(server.url("/dl"))
+        .body("id=8")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(wrong.status(), StatusCode::BAD_REQUEST);
+    let ranged = client()
+        .post(server.url("/dl"))
+        .body("id=7&agree=1")
+        .header(header::RANGE, "bytes=10-19")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(ranged.status(), StatusCode::PARTIAL_CONTENT);
+    assert_eq!(
+        ranged.bytes().await.unwrap().as_ref(),
+        FileSpec::new(SIZE).bytes(10, 10)
+    );
+    let log = server.requests();
+    assert_eq!(log[2].method, "POST");
+    assert_eq!(log[2].body, b"id=7&agree=1");
+}
+
+#[tokio::test]
+async fn text_files_are_served_as_given() {
+    let server = TestServer::start().await.unwrap();
+    server.set_text(
+        "/proxy.pac",
+        "application/x-ns-proxy-autoconfig",
+        "function x() {}",
+    );
+    let resp = client().get(server.url("/proxy.pac")).send().await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        header_str(&resp, header::CONTENT_TYPE).as_deref(),
+        Some("application/x-ns-proxy-autoconfig")
+    );
+    assert_eq!(resp.text().await.unwrap(), "function x() {}");
+}
+
+#[tokio::test]
+async fn an_expiring_link_works_a_few_times_then_answers_403() {
+    let server = server_with("/f.bin", FileSpec::new(SIZE).expire_after(2)).await;
+    let mut statuses = Vec::new();
+    for _ in 0..4 {
+        let resp = client().get(server.url("/f.bin")).send().await.unwrap();
+        statuses.push(resp.status().as_u16());
+    }
+    assert_eq!(statuses, [200, 200, 403, 403]);
+}
+
+#[tokio::test]
+async fn a_busy_file_refuses_more_than_its_limit_at_once() {
+    // Slow enough that the first response is still sending during the second request.
+    let spec = FileSpec::new(SIZE).throttle(50_000).max_concurrent(1);
+    let server = server_with("/f.bin", spec).await;
+    let first = client().get(server.url("/f.bin")).send().await.unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = client().get(server.url("/f.bin")).send().await.unwrap();
+    assert_eq!(second.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(server.refused("/f.bin"), 1);
+
+    // Once the first client leaves, there is room again.
+    drop(first);
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let third = client().get(server.url("/f.bin")).send().await.unwrap();
+    assert_eq!(third.status(), StatusCode::OK);
+    assert_eq!(server.refused("/f.bin"), 1);
+}
+
+#[tokio::test]
+async fn the_first_responses_can_be_slower_than_the_rest() {
+    let spec = FileSpec::new(SIZE).slow_first(1, 50_000);
+    let server = server_with("/f.bin", spec).await;
+
+    let started = Instant::now();
+    client()
+        .get(server.url("/f.bin"))
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let slow = started.elapsed();
+    let started = Instant::now();
+    client()
+        .get(server.url("/f.bin"))
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    let fast = started.elapsed();
+
+    assert!(slow >= Duration::from_millis(1500), "first took {slow:?}");
+    assert!(fast < Duration::from_millis(500), "second took {fast:?}");
+}
+
+#[tokio::test]
+async fn a_file_can_require_a_header() {
+    let spec = FileSpec::new(SIZE).require_header("Referer", "https://example.com/page");
+    let server = server_with("/f.bin", spec).await;
+    let without = client().get(server.url("/f.bin")).send().await.unwrap();
+    assert_eq!(without.status(), StatusCode::FORBIDDEN);
+    let with = client()
+        .get(server.url("/f.bin"))
+        .header(header::REFERER, "https://example.com/page")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(with.status(), StatusCode::OK);
 }
