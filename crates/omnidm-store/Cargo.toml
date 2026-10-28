@@ -8,3 +8,9 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+omnidm-core = { version = "0.1.0", path = "../omnidm-core" }
+rusqlite = { version = "0.41.0", features = ["bundled"] }
+
+[dev-dependencies]
+rusqlite = { version = "0.41.0", features = ["bundled"] }
+tempfile = "3.27.0"

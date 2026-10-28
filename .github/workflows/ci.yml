@@ -35,6 +35,8 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      - name: Crash test (20 random kills of a 128 MiB download)
+        run: cargo test -p omnidm-cli --test crash -- --ignored --nocapture
 
   extension:
     name: Extension (type-check, build)

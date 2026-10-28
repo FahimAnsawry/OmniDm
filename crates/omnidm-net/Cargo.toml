@@ -8,3 +8,5 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+httpdate = "1.0.3"
+reqwest = "0.13.5"

@@ -8,3 +8,17 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+fastrand = "2.5.0"
+omnidm-net = { version = "0.1.0", path = "../omnidm-net" }
+reqwest = "0.13.5"
+tokio = { version = "1.54.1", features = ["rt", "sync", "time", "macros"] }
+tokio-util = "0.7.20"
+
+[dev-dependencies]
+omnidm-testserver = { path = "../omnidm-testserver" }
+proptest = "1.12.0"
+tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros"] }
+
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_IO", "Win32_System_Ioctl"] }

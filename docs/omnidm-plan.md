@@ -173,7 +173,10 @@ Invariant: the segments of a download are ordered, don't overlap, and cover `[0,
    - `200` + `Content-Length`: size known, not resumable. Single stream, and resume restarts from zero.
    - `200` without a length (chunked): single stream, size unknown.
    - Record the final URL, `ETag`, `Last-Modified`, `Content-Type` and `Content-Disposition`. Decide the file name (§5.8).
-2. **Allocate.** Check free space, then create `<name>.omnidm-part` and set its length to `T` (`SetFileInformationByHandle(FileEndOfFileInfo)` through `File::set_len`). Use `\\?\` long paths when needed.
+2. **Allocate.** Check free space, then create `<name>.omnidm-part`, mark it **sparse** (`FSCTL_SET_SPARSE` on Windows), and set its length to `T` with `File::set_len`.
+   - Without the sparse flag, a write far into the file makes Windows zero-fill everything before it first, which the crash test showed freezes big downloads.
+   - File systems without sparse support (FAT32) still work, just slower.
+   - Use `\\?\` long paths when needed.
 3. **Run.** Connection 0 keeps streaming. The ramp-up controller adds connections (§5.3).
 4. **Checkpoint** periodically (§5.5).
 5. **Complete.**
@@ -220,7 +223,9 @@ A segment is *stalled* when its speed stays below 25 % of the median segment spe
 
 ### 5.5 Disk writes and checkpoints
 
-- Each segment has a write buffer (default 1 MiB). Full buffers become positional writes (`FileExt::seek_write`) on a shared handle from a blocking-pool writer, so the async runtime never blocks on disk.
+- Each segment has a write buffer (default 1 MiB). It is written when full **or** after `flush_interval` (default 1 s), so slow connections still save progress.
+  - Writes are positional (`FileExt::seek_write`) on a shared handle.
+  - M1 writes under the segment-map lock. Moving disk writes out of the lock, to a blocking-pool writer, is a later optimisation.
 - **Checkpoint** every 2 s or 16 MiB, whichever comes first:
   1. Flush all buffers.
   2. `FlushFileBuffers`.
@@ -244,7 +249,7 @@ A segment is *stalled* when its speed stays below 25 % of the median segment spe
   |---|---|
   | Network error, timeout, 5xx | Retry with exponential back-off and jitter (1 s → 60 s, default 10 tries per segment) |
   | `429` / `503` | Honour `Retry-After`, halve the connection count for the host, retry |
-  | `401` / `407` | Ask for credentials (or use saved ones), retry once |
+  | `401` / `407` | Ask for credentials (or use saved ones), retry once. Until M5, a `401` fails with "this site needs a username and password"; a `407` uses the credentials in the proxy settings |
   | `403`, `404`, `410` on the probe | Fail with a clear message. For a browser capture, report back so the extension resumes the browser's copy (§9.3) |
   | `403` mid-download (expired token) | Pause with "link expired, refresh address". Ask the extension for fresh cookies or a new URL |
 - **Content sniffing:** if the first bytes are HTML while a binary was expected, stop and report "server returned a web page instead of the file".
@@ -283,7 +288,7 @@ Then:
 | Cookies | Captured cookies go into a per-download jar. `Set-Cookie` from the server is merged. Partitioned (CHIPS) cookies are included when the extension provides them |
 | Headers | Captured browser headers are replayed except headers the engine controls (`Host`, `Range`, `If-*`, `Connection`, `Content-Length`, `Accept-Encoding`, `Proxy-*`, `Upgrade`) |
 | Compression | Request `Accept-Encoding: identity` for ranged segments, so byte offsets match the file. Single-stream downloads may accept gzip/br |
-| Auth | Basic, Digest. Credentials per site in Windows Credential Manager. NTLM/Negotiate in v1.x (§15, R1) |
+| Auth | Basic, Digest (M5, with the login dialog). Credentials per site in Windows Credential Manager. NTLM/Negotiate in v1.x (§15, R1) |
 | Proxy | None / system / manual HTTP / HTTPS CONNECT / SOCKS5 with remote DNS / PAC URL. System settings read with `WinHttpGetIEProxyConfigForCurrentUser`. PAC scripts run in a sandboxed JS engine with a time limit, results cached per host |
 | TLS | `rustls` with the platform verifier. "Ignore certificate errors" is a per-download, clearly marked option, off by default |
 | IPv6 | Happy Eyeballs through the connector |
@@ -492,20 +497,33 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 - [ ] Create `github.com/FahimAnsawry/OmniDm`, push, and see CI pass.
 - **Done when:** `cargo test` and the extension build both pass in CI on an empty skeleton. Locally verified 2026-10-28: fmt, clippy, tests, app UI build, both extension builds.
 
-### M1: Core engine + CLI
-- [ ] `omnidm-testserver` with all fault switches.
-- [ ] Probe, preallocation, segment workers, ramp controller, splitting, positional writes, checkpoints.
-- [ ] `If-Range` resume, `200`/`416` handling, retry/back-off, stall hedging.
-- [ ] SQLite store with migrations; downloads and segments repositories.
-- [ ] CLI: `omnidm get <url> [-c N] [-o file] [--limit 2M]` running the engine in-process (the pipe comes in M3).
-- **Done when:** a 4 GB download with 8 connections survives 20 random kills and matches its SHA-256. Every testserver fault behaves as §5.6 specifies.
+### M1: Core engine + CLI ✅ (2026-10-28)
+- [x] `omnidm-testserver` with the M1 fault switches: ranges off, ETag/size change, throttle, drop, stall, 429/503 + `Retry-After`, unknown size, HTML page, redirects. Cookies and `Content-Disposition` variants move to M2, auth to M5.
+- [x] Probe, preallocation, segment workers, ramp controller, splitting, positional writes, checkpoints.
+- [x] `If-Range` resume, `200`/`416` handling, retry/back-off, restarting stalled connections.
+- [x] SQLite store with migrations; downloads and segments repositories.
+- [x] CLI: `omnidm get <url> [-c N] [-o file] [-d dir] [-H header]` and `omnidm list`, running the engine in-process (the pipe comes in M3). `--limit` moves to M2 with the token bucket.
+- **Done when:** a 4 GB download with 8 connections survives 20 random kills and matches its SHA-256.
+  - **Result:** 4.5 GiB (past the 32-bit offset limit), 8 connections, 20 random kills.
+  - After every kill, every byte the database counted as saved was verified on disk, and saved progress never went backwards.
+  - The final file is byte-identical to the served file.
+  - The 128 MiB version runs in CI (`cargo test -p omnidm-cli --test crash -- --ignored`).
+- **Found by the crash test and fixed:**
+  - Slow connections held data in memory until the 1 MiB buffer filled, so a crash lost it and progress froze. A connection now also writes after `flush_interval` (1 s).
+  - Writing far into a full-size part file made Windows zero-fill everything before it, freezing big downloads for seconds and doubling disk writes. The part file is now sparse (§5.2).
+- **Moved to M2:**
+  - racing a duplicate request on a small stalled remainder (§5.4)
+  - halving connections after 429/503
+  - a "link expired" pause for a 403 mid-download
+  - a free-space check before allocating (needed now that part files are sparse)
 
 ### M2: Network features
 - [ ] Redirect handling and filename rules (§5.8), cookies, custom headers, POST.
-- [ ] Basic and Digest auth, Credential Manager.
-- [ ] Proxy: manual, SOCKS5, system, PAC.
+- [ ] Proxy: manual (with optional proxy username/password), SOCKS5, system, PAC.
 - [ ] Token-bucket limiter (global/download) and the 85 % ramp gate.
-- **Done when:** the integration suite covers every row in §6 and passes. Downloading through a SOCKS5 proxy and a PAC file works.
+- [ ] The items moved from M1 (listed above).
+- Site login (Basic/Digest auth) moved to M5 (decided 2026-10-28). Until then a `401` fails with a clear message.
+- **Done when:** the integration suite covers every row in §6 except Auth and passes. Downloading through a SOCKS5 proxy and a PAC file works.
 
 ### M3: IPC, host, extension
 - [ ] `protocol/` schema and generated types. Pipe server with the ACL and peer checks.
@@ -523,6 +541,7 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 ### M5: Desktop UI
 - [ ] Screens from §11.1, tray, notifications, autostart, clipboard monitor.
 - [ ] Settings wired to the store and live-applied.
+- [ ] Site login: Basic and Digest auth, a username/password dialog on `401`, saved per site in Windows Credential Manager. The test server gets auth switches.
 - **Done when:** every engine feature is reachable from the UI. 500 downloads in the list scroll smoothly while 10 are running.
 
 ### M6: Media
