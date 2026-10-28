@@ -1,0 +1,10 @@
+[package]
+name = "omnidm-ipc"
+description = "IPC protocol types, message framing and the named-pipe server and client."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

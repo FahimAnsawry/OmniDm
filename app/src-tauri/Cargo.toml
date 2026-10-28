@@ -1,0 +1,20 @@
+[package]
+name = "omnidm-app"
+description = "OmniDm desktop app."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+# The `_lib` suffix keeps the library name distinct from the binary name,
+# which avoids https://github.com/rust-lang/cargo/issues/8519 on Windows.
+name = "omnidm_app_lib"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }

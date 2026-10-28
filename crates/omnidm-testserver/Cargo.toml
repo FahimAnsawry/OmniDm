@@ -1,0 +1,11 @@
+[package]
+name = "omnidm-testserver"
+description = "HTTP test server with fault injection, used by OmniDm integration tests."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]

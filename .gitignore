@@ -1,0 +1,33 @@
+# Rust
+/target/
+
+# Node / front-end builds
+node_modules/
+dist/
+.output/
+.wxt/
+*.tsbuildinfo
+
+# Tauri
+/app/src-tauri/target/
+/app/src-tauri/gen/schemas/
+
+# OmniDm runtime files
+*.omnidm-part
+*.omnidm-media/
+
+# Editors and OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local Claude Code settings
+.claude/settings.local.json
+
+# Private research notes: kept on the developer's PC, never published.
+# Implementation follows docs/omnidm-plan.md only.
+/docs/idm-analysis.md
+/docs/idm-analysis-1.md
+/docs/evidence/

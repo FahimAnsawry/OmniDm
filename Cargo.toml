@@ -1,0 +1,27 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "app/src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/FahimAnsawry/OmniDm"
+homepage = "https://github.com/FahimAnsawry/OmniDm"
+
+[workspace.dependencies]
+omnidm-core = { path = "crates/omnidm-core" }
+omnidm-net = { path = "crates/omnidm-net" }
+omnidm-store = { path = "crates/omnidm-store" }
+omnidm-queue = { path = "crates/omnidm-queue" }
+omnidm-media = { path = "crates/omnidm-media" }
+omnidm-ipc = { path = "crates/omnidm-ipc" }
+
+# Small, fast release binaries: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

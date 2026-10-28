@@ -1,0 +1,10 @@
+[package]
+name = "omnidm-media"
+description = "HLS and DASH parsing, AES-128 decryption and the FFmpeg remux adapter."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

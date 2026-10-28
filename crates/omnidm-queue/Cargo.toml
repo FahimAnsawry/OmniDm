@@ -1,0 +1,10 @@
+[package]
+name = "omnidm-queue"
+description = "Queues, scheduler, categories and power management."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

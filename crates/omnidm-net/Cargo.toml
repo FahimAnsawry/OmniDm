@@ -1,0 +1,10 @@
+[package]
+name = "omnidm-net"
+description = "HTTP client layer: proxies and PAC, authentication, cookies, redirects, file naming."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
