@@ -66,11 +66,11 @@ export function ContextMenu({
       role="menu"
       style={place}
       onContextMenu={(e) => e.preventDefault()}
-      className="fixed z-50 min-w-48 rounded-lg border border-neutral-200 bg-white p-1 text-[13px] shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+      className="fixed z-50 min-w-48 rounded-xl border border-white/[0.12] bg-[#141a2e]/95 p-1 text-[13px] text-[#f4f6fb] shadow-[0_16px_40px_-8px_rgb(0_0_0/0.6)] backdrop-blur-xl"
     >
       {items.map((item, i) =>
         item === "separator" ? (
-          <div key={i} role="separator" className="my-1 h-px bg-neutral-200 dark:bg-neutral-700" />
+          <div key={i} role="separator" className="my-1 h-px bg-white/[0.08]" />
         ) : (
           <button
             key={i}
@@ -81,13 +81,13 @@ export function ContextMenu({
               onClose();
               item.onSelect();
             }}
-            className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left outline-none disabled:opacity-35 ${
+            className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left outline-none disabled:opacity-35 ${
               item.danger
-                ? "text-red-700 hover:bg-red-50 focus:bg-red-50 dark:text-red-400 dark:hover:bg-red-950 dark:focus:bg-red-950"
-                : "hover:bg-neutral-100 focus:bg-neutral-100 dark:hover:bg-neutral-800 dark:focus:bg-neutral-800"
+                ? "text-[#ff9a9e] hover:bg-[#e5484d]/15 focus:bg-[#e5484d]/15"
+                : "hover:bg-white/[0.07] focus:bg-white/[0.07]"
             }`}
           >
-            {item.icon ? <Icon name={item.icon} className="size-4 opacity-70" /> : <span className="size-4" />}
+            {item.icon ? <Icon name={item.icon} className="size-4 text-[#8b93a9]" /> : <span className="size-4" />}
             {item.label}
           </button>
         ),

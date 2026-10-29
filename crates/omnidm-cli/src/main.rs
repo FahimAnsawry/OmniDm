@@ -48,7 +48,7 @@ enum Command {
         #[arg(short, long, default_value = ".")]
         dir: PathBuf,
         /// Maximum connections (1–32).
-        #[arg(short, long, default_value_t = 8)]
+        #[arg(short, long, default_value_t = 32)]
         connections: u32,
         /// Extra request header, e.g. -H "Referer: https://example.com". Repeatable.
         #[arg(short = 'H', long = "header", value_parser = parse_header)]

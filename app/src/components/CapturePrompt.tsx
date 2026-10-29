@@ -3,53 +3,76 @@
 // The capture prompt: its own small window, opened when a download is taken from the
 // browser and "Ask before downloading" is on.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open } from "@tauri-apps/plugin-dialog";
 import type { AskAbout } from "../../../protocol/ts/AskAbout";
-import type { CategorySummary } from "../../../protocol/ts/CategorySummary";
 import type { QueueSummary } from "../../../protocol/ts/QueueSummary";
 import { api, errorText } from "../lib/api";
+import { fileKind } from "../lib/fileKind";
 import { formatBytes } from "../lib/format";
+import { Chip, Crumbs, EnterHint, FileIcon, SmallTitleBar, folderCrumbs } from "./Chrome";
 import { DownloadProgress } from "./DownloadProgress";
-import { Button, Field, FolderField, inputClass, selectClass } from "./Fields";
 import { Icon } from "./Icon";
 
 const close = () => getCurrentWindow().close();
 
+/** "releases.ubuntu.com/24.04.1/": where the file comes from, without its name. */
+function source(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.host + parsed.pathname.replace(/[^/]*$/, "");
+  } catch {
+    return url;
+  }
+}
+
 export function CapturePrompt({ id }: { id: number }) {
   const [about, setAbout] = useState<AskAbout | null>(null);
-  const [categories, setCategories] = useState<CategorySummary[]>([]);
   const [queues, setQueues] = useState<QueueSummary[]>([]);
   const [name, setName] = useState("");
   const [folder, setFolder] = useState("");
+  const [folderChosen, setFolderChosen] = useState(false);
   const [category, setCategory] = useState("");
-  const [queue, setQueue] = useState("");
   const [dontAsk, setDontAsk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [laterMenu, setLaterMenu] = useState(false);
+  const nameInput = useRef<HTMLInputElement>(null);
   /** Started with "Download now": the window shows its progress from then on. */
   const [started, setStarted] = useState(false);
 
   useEffect(() => {
-    Promise.all([api.capturePrompt(id), api.listCategories(), api.listQueues()])
-      .then(([found, categoryList, queueList]) => {
+    Promise.all([api.capturePrompt(id), api.listQueues()])
+      .then(([found, queueList]) => {
         // Answered elsewhere, or deleted from the list.
         if (!found) return close();
         setAbout(found);
         setName(found.fileName);
         setFolder(found.folder);
         setCategory(found.category ?? "");
-        setCategories(categoryList);
         setQueues(queueList);
-        setQueue(queueList[0]?.name ?? "");
       })
       .catch((e) => setError(errorText(e)));
   }, [id]);
 
+  // Auto-select category and folder based on the file extension when the name changes.
+  useEffect(() => {
+    if (!about || !name.trim() || name === about.fileName) return;
+    api
+      .suggestPlace(about.url, name.trim())
+      .then((place) => {
+        setCategory(place.category ?? "");
+        if (!folderChosen) setFolder(place.folder);
+      })
+      .catch(() => {});
+  }, [about, name, folderChosen]);
+
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        if (started) close();
+        if (laterMenu) setLaterMenu(false);
+        else if (started) close();
         else cancel();
       }
     };
@@ -57,14 +80,17 @@ export function CapturePrompt({ id }: { id: number }) {
     return () => window.removeEventListener("keydown", key);
   });
 
-  const pickCategory = (name: string) => {
-    setCategory(name);
-    const chosen = categories.find((c) => c.name === name);
-    if (about) setFolder(chosen?.folder ?? about.downloadsFolder);
+  const browse = async () => {
+    const picked = await open({ directory: true, defaultPath: folder || undefined, title: "Save in" });
+    if (typeof picked === "string") {
+      setFolder(picked);
+      setFolderChosen(true);
+    }
   };
 
   const answer = async (inQueue?: string) => {
     setBusy(true);
+    setLaterMenu(false);
     try {
       await api.answerCapture({
         downloadId: id,
@@ -95,9 +121,19 @@ export function CapturePrompt({ id }: { id: number }) {
     }
   };
 
-  if (started) {
-    return <DownloadProgress id={id} name={name.trim()} size={about?.size} />;
+  if (started && about) {
+    return (
+      <DownloadProgress
+        id={id}
+        name={name.trim()}
+        size={about.size}
+        folder={folder}
+        downloadsFolder={about.downloadsFolder}
+      />
+    );
   }
+
+  const kind = fileKind(name);
 
   return (
     <form
@@ -105,106 +141,141 @@ export function CapturePrompt({ id }: { id: number }) {
         e.preventDefault();
         answer();
       }}
-      className="flex h-screen flex-col gap-3.5 bg-white p-5 font-sans text-neutral-900 select-none dark:bg-neutral-900 dark:text-neutral-100"
+      className="glow-window flex h-screen flex-col px-4 pt-3 pb-4 font-sans text-[#f4f6fb] select-none"
     >
-      <div className="flex items-start gap-3">
-        <span className="rounded-lg bg-sky-100 p-2 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300">
-          <Icon name="downloading" className="size-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-[15px] font-semibold">Download this file?</h1>
-          <p className="truncate text-xs text-neutral-500 select-text" title={about?.url}>
-            {about?.url ?? "Loading…"}
-          </p>
-        </div>
-        {about && (
-          <div className="text-right text-xs text-neutral-500">
-            <p className="text-[13px] font-medium text-neutral-800 tabular-nums dark:text-neutral-200">
-              {about.size != null ? formatBytes(about.size) : "Size unknown"}
-            </p>
-            <p>{about.resumable ? "Can pause and resume" : "Can't resume if stopped"}</p>
-          </div>
-        )}
-      </div>
+      <SmallTitleBar />
 
-      <Field label="File name" htmlFor="name">
-        <input
-          id="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          spellCheck={false}
-          className={inputClass}
-        />
-      </Field>
-      <div className="flex gap-3">
-        <Field label="Category" htmlFor="category">
-          <select
-            id="category"
-            value={category}
-            onChange={(e) => pickCategory(e.target.value)}
-            className={`${selectClass} w-36`}
-          >
-            <option value="">None</option>
-            {categories.map((c) => (
-              <option key={c.categoryId} value={c.name}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <div className="min-w-0 flex-1">
-          <Field label="Save in" htmlFor="folder">
-            <FolderField id="folder" value={folder} onChange={setFolder} />
-          </Field>
+      <div className="mt-5 flex flex-col gap-[18px] px-1">
+        <div className="flex items-center gap-4">
+          <FileIcon name={name} className="h-[66px] w-14" />
+          <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
+            <div className="flex max-w-full items-center gap-2">
+              <input
+                ref={nameInput}
+                aria-label="File name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                spellCheck={false}
+                className="-mx-1.5 max-w-full min-w-10 truncate rounded-md border border-transparent bg-transparent px-1.5 text-base font-semibold tracking-[-0.01em] [field-sizing:content] outline-none hover:border-white/10 focus:border-[#6b88ff80] focus:bg-white/[0.04]"
+              />
+              <button
+                type="button"
+                aria-label="Rename"
+                title="Rename"
+                onClick={() => {
+                  nameInput.current?.focus();
+                  nameInput.current?.select();
+                }}
+                className="shrink-0 rounded p-0.5 text-[#6b7390] hover:text-[#c9cfdd]"
+              >
+                <Icon name="pencil" className="size-3" />
+              </button>
+            </div>
+            {about && (
+              <div className="flex gap-1.5">
+                <Chip>{about.size != null ? formatBytes(about.size) : "Size unknown"}</Chip>
+                <Chip>{kind.label}</Chip>
+                {about.resumable ? <Chip tone="green">Resumable</Chip> : <Chip>Can't resume</Chip>}
+              </div>
+            )}
+            <p className="flex max-w-full items-center gap-1.5 text-xs text-[#8b93a9]" title={about?.url}>
+              <Icon name="link-2" className="size-3 text-[#6b7390]" />
+              <span className="truncate select-text">{about ? source(about.url) : "Loading…"}</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-white/[0.08] bg-white/[0.03]">
+          <div className="flex h-[46px] items-center gap-3 px-3">
+            <Icon name="folder" className="text-[#8ea4ff]" />
+            <span className="w-16 shrink-0 text-[13px] text-[#8b93a9]">Save to</span>
+            <span className="min-w-0 flex-1" title={folder}>
+              <Crumbs crumbs={folderCrumbs(folder, about?.downloadsFolder)} />
+            </span>
+            <button
+              type="button"
+              onClick={browse}
+              className="rounded-lg border border-white/[0.12] bg-white/[0.06] px-2.5 py-1.5 text-xs font-medium hover:bg-white/[0.1]"
+            >
+              Change
+            </button>
+          </div>
         </div>
       </div>
 
       {error && (
-        <p role="alert" className="text-[13px] text-red-700 dark:text-red-400">
+        <p role="alert" className="mt-3 px-1 text-xs text-[#ff9a9e]">
           {error}
         </p>
       )}
 
       <div className="mt-auto flex items-center gap-2">
-        <label className="mr-auto flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
-          <input
-            type="checkbox"
-            checked={dontAsk}
-            onChange={(e) => setDontAsk(e.target.checked)}
-            className="size-3.5 accent-sky-600"
-          />
+        <label className="mr-auto flex cursor-pointer items-center gap-2 text-xs text-[#8b93a9]">
+          <span className="relative flex size-4 items-center justify-center">
+            <input
+              type="checkbox"
+              checked={dontAsk}
+              onChange={(e) => setDontAsk(e.target.checked)}
+              className="peer size-4 cursor-pointer appearance-none rounded border border-white/[0.22] bg-white/[0.03] checked:border-[#4a6cff] checked:bg-[#4a6cff] focus-visible:outline-2 focus-visible:outline-[#6b88ff]"
+            />
+            <Icon
+              name="check"
+              strokeWidth={3}
+              className="pointer-events-none absolute size-3 text-white opacity-0 peer-checked:opacity-100"
+            />
+          </span>
           Don't ask again
         </label>
-        <Button onClick={cancel} disabled={busy}>
-          Cancel
-        </Button>
         {queues.length > 0 && (
-          <div className="flex">
-            <Button
-              onClick={() => answer(queue)}
+          <div className="relative">
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={laterMenu}
               disabled={busy || !about}
-              className="rounded-r-none"
-              title={`Add to ${queue} without starting`}
+              onClick={() => setLaterMenu((shown) => !shown)}
+              className="flex h-9 items-center gap-1.5 rounded-[10px] border border-white/[0.12] bg-white/[0.04] pr-2.5 pl-3 text-[13px] font-semibold hover:bg-white/[0.08] disabled:opacity-40"
             >
+              <Icon name="clock" className="text-[#c9cfdd]" />
               Later
-            </Button>
-            <select
-              aria-label="Queue"
-              value={queue}
-              onChange={(e) => setQueue(e.target.value)}
-              className={`${selectClass} -ml-px max-w-28 rounded-l-none`}
-            >
-              {queues.map((q) => (
-                <option key={q.queueId} value={q.name}>
-                  {q.name}
-                </option>
-              ))}
-            </select>
+              <Icon name="down" className="size-3 text-[#8b93a9]" />
+            </button>
+            {laterMenu && (
+              <>
+                <div className="fixed inset-0" onClick={() => setLaterMenu(false)} />
+                <div
+                  role="menu"
+                  className="absolute right-0 bottom-full mb-2 min-w-52 rounded-xl border border-white/[0.12] bg-[#141a2e] p-1 shadow-[0_16px_40px_-8px_rgb(0_0_0/0.6)]"
+                >
+                  {queues.map((q) => (
+                    <button
+                      key={q.queueId}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => answer(q.name)}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-white/[0.07]"
+                    >
+                      <Icon name={q.schedule ? "moon" : "queue"} className="text-[#8b93a9]" />
+                      <span className="flex-1">Add to {q.name}</span>
+                      {q.nextStart && (
+                        <span className="text-xs text-[#8b93a9] tabular-nums">{q.nextStart.slice(-5)}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
-        <Button type="submit" primary autoFocus disabled={busy || !about}>
+        <button
+          type="submit"
+          autoFocus
+          disabled={busy || !about}
+          className="button-primary flex h-9 items-center gap-3 rounded-[10px] pr-2 pl-4 text-[13px] font-semibold disabled:opacity-50"
+        >
           Download now
-        </Button>
+          <EnterHint />
+        </button>
       </div>
     </form>
   );

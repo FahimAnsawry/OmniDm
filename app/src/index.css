@@ -1,1 +1,84 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/* Every window is dark: the premium look has no light version. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter Variable", "Segoe UI", system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+html,
+body {
+  background: #0b0e1a;
+}
+
+select {
+  color-scheme: dark;
+}
+
+select option,
+select optgroup {
+  background-color: #141a2e;
+  color: #f4f6fb;
+}
+
+/* The windows' glow: a sunset light top-left and a blue (or green, when done) one bottom-right. */
+.glow-window {
+  background:
+    radial-gradient(ellipse 75% 75% at 8% 0%, rgb(255 138 76 / 0.2), transparent),
+    radial-gradient(ellipse 85% 85% at 100% 100%, rgb(59 91 255 / 0.26), transparent),
+    #0b0e1a;
+}
+.glow-done {
+  background:
+    radial-gradient(ellipse 75% 75% at 8% 0%, rgb(255 138 76 / 0.2), transparent),
+    radial-gradient(ellipse 60% 60% at 50% 35%, rgb(18 184 134 / 0.18), transparent),
+    #0b0e1a;
+}
+.glow-main {
+  background:
+    radial-gradient(ellipse 55% 55% at 2% 0%, rgb(255 138 76 / 0.16), transparent),
+    radial-gradient(ellipse 70% 70% at 100% 100%, rgb(59 91 255 / 0.22), transparent),
+    #0a0d18;
+}
+
+/* The blue main button. */
+.button-primary {
+  background: linear-gradient(180deg, #4a6cff, #2a48e0);
+  border: 1px solid rgb(255 255 255 / 0.22);
+  box-shadow: 0 8px 24px -6px rgb(59 91 255 / 0.7);
+  color: #fff;
+}
+.button-primary:hover {
+  background: linear-gradient(180deg, #5878ff, #3352ea);
+}
+
+/* A progress bar's filled part. */
+.bar-fill {
+  background: linear-gradient(90deg, #4a6cff, #7c9bff);
+  box-shadow: 0 0 10px rgb(74 108 255 / 0.5);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 99px;
+  background: rgb(255 255 255 / 0.12) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(255 255 255 / 0.2);
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

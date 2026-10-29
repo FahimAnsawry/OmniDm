@@ -189,6 +189,19 @@ impl Manager {
 
         let title = add.title.as_deref().or(manifest.title.as_deref());
         let name = media_file_name(title, &add.url);
+        let sound_only = add.choice.quality.as_ref().is_some_and(|q| {
+            q.height.is_none()
+                && manifest
+                    .qualities
+                    .iter()
+                    .any(|mq| mq.height.is_none() && mq.width.is_none() && mq.bandwidth == q.bandwidth)
+        });
+        let ext_name = if sound_only {
+            format!("{}.m4a", name.trim_end_matches(".mp4"))
+        } else {
+            name.clone()
+        };
+        let mime = if sound_only { "audio/mp4" } else { "video/mp4" };
         let (category, dir) = match &add.dir {
             Some(dir) => {
                 if !dir.is_absolute() {
@@ -196,9 +209,9 @@ impl Manager {
                 }
                 std::fs::create_dir_all(dir)
                     .map_err(|e| format!("can't create the folder: {e}"))?;
-                (self.place(&name, None, &add.url, dir).0, dir.clone())
+                (self.place(&ext_name, Some(mime), &add.url, dir).0, dir.clone())
             }
-            None => self.place(&name, Some("video/mp4"), &add.url, &self.downloads_folder()),
+            None => self.place(&ext_name, Some(mime), &add.url, &self.downloads_folder()),
         };
         let choice = serde_json::to_string(&add.choice).map_err(|e| e.to_string())?;
         let id = {
@@ -587,20 +600,21 @@ fn save_tracks(
     tracks: Vec<Joined>,
 ) -> std::io::Result<PathBuf> {
     let stem = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
+    let has_picture = tracks.iter().any(|t| !t.sound);
     let mut main = None;
     for track in tracks {
         let extension = match (track.sound, track.container) {
             (true, Container::Mp4) => "m4a",
             (_, container) => container.extension(),
         };
-        let file = if track.sound {
+        let file = if track.sound && has_picture {
             format!("{stem} (sound).{extension}")
         } else {
             format!("{stem}.{extension}")
         };
         let target = unique_path(dir, &file, Path::exists);
         std::fs::rename(&track.path, &target)?;
-        if !track.sound {
+        if !track.sound || !has_picture {
             main = Some(target);
         }
     }

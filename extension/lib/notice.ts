@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // The "Install OmniDm" notice (plan §9.3): a badge on the toolbar icon while the app
-// can't be found, and a setup page once, right after the extension is installed. Otherwise
-// the badge counts the videos found on the page.
+// can't be found or when the extension is disabled, and a setup page once, right after the
+// extension is installed.
 
 import type { LinkStatus } from './native';
 
@@ -17,38 +17,33 @@ export interface Badge {
   title: string;
 }
 
-const NORMAL: Badge = { text: '', color: '#0284c7', title: 'OmniDm' };
+const NORMAL: Badge = { text: '', color: '#0284c7', title: 'OmniDm (click to disable)' };
 
-/** The toolbar icon's badge for a connection state. */
-export function badgeFor(status: LinkStatus): Badge {
+const DISABLED: Badge = {
+  text: 'OFF',
+  color: '#6b7280',
+  title: 'OmniDm is disabled (click to enable)',
+};
+
+/** The toolbar icon's badge for a connection state and enabled toggle. */
+export function badgeFor(status: LinkStatus, enabled = true): Badge {
+  if (!enabled) return DISABLED;
   switch (status) {
     case 'notInstalled':
       return {
         text: '!',
         color: '#dc2626',
-        title: "OmniDm isn't installed, so downloads stay in the browser. Click for help.",
+        title: "OmniDm isn't installed, so downloads stay in the browser.",
       };
     case 'notRunning':
       return {
         text: '!',
         color: '#d97706',
-        title: "OmniDm didn't start, so downloads stay in the browser. Click to try again.",
+        title: "OmniDm didn't start, so downloads stay in the browser.",
       };
     default:
       return NORMAL;
   }
-}
-
-/** The badge on one tab: the notice while the app can't be found, else how many videos
- * on the page can be downloaded. */
-export function badgeForTab(status: LinkStatus, videos: number): Badge {
-  const notice = badgeFor(status);
-  if (notice.text || videos === 0) return notice;
-  return {
-    text: String(videos),
-    color: '#0284c7',
-    title: videos === 1 ? 'OmniDm found a video on this page' : `OmniDm found ${videos} videos on this page`,
-  };
 }
 
 /**

@@ -40,13 +40,13 @@ describe('decide', () => {
     }
   });
 
-  it('leaves private-window downloads unless allowed', () => {
+  it('captures private-window downloads by default unless disabled', () => {
     expect(decide(facts({ incognito: true }), settings())).toEqual({
+      capture: true,
+    });
+    expect(decide(facts({ incognito: true }), settings({ capturePrivate: false }))).toEqual({
       capture: false,
       reason: 'private',
-    });
-    expect(decide(facts({ incognito: true }), settings({ capturePrivate: true }))).toEqual({
-      capture: true,
     });
   });
 

@@ -66,6 +66,7 @@ export const api = {
   stopQueue: (name: string) => invoke<void>("stop_queue", { name }),
   openFile: (id: number) => invoke<void>("open_file", { id }),
   showInFolder: (id: number) => invoke<void>("show_in_folder", { id }),
+  openExtensionGuide: () => invoke<void>("open_extension_guide"),
   cancelAfterQueue: () => invoke<boolean>("cancel_after_queue"),
   addDownload: (download: NewDownload) => invoke<number>("add_download", { download }),
   lookAtMedia: (url: string) => invoke<MediaInfo>("look_at_media", { url }),

@@ -13,7 +13,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use omnidm_core::engine::{EngineConfig, Method, Request};
 use omnidm_core::fetch::fetch;
@@ -24,6 +25,7 @@ use omnidm_media::{
 use omnidm_net::cookies::CookieJar;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 use crate::media::MediaJobError;
@@ -48,9 +50,16 @@ pub const PIECE_SIZE: u64 = 10 * 1024 * 1024;
 const READ_TIMEOUT: Duration = Duration::from_secs(90);
 /// Longest an update may take.
 const UPDATE_TIMEOUT: Duration = Duration::from_secs(180);
+/// How long a video's read manifest is reused (YouTube stream links last ~6 hours).
+const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+/// Most manifests kept in memory at once.
+const MAX_CACHED: usize = 32;
 
 /// The [`AudioTrack::group`] of every separate sound track.
 const AUDIO_GROUP: &str = "audio";
+/// YouTube's inner player API, which answers in ~300 ms without spawning yt-dlp.
+const PLAYER_API: &str = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false";
+const VISIONOS_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15";
 
 /// yt-dlp: where it is, and where to fetch it from when it isn't.
 pub struct YtDlp {
@@ -60,6 +69,11 @@ pub struct YtDlp {
     pub release: Option<String>,
     /// One fetch or update at a time.
     busy: tokio::sync::Mutex<()>,
+    /// Recently read manifests by video ID, so the browser menu, the video window,
+    /// adding the download and running it don't spawn yt-dlp four times.
+    cache: Mutex<HashMap<String, (Instant, Manifest)>>,
+    /// Concurrent reads of the same video share one yt-dlp run.
+    inflight: Mutex<HashMap<String, Arc<Notify>>>,
 }
 
 impl YtDlp {
@@ -68,6 +82,8 @@ impl YtDlp {
             path,
             release,
             busy: tokio::sync::Mutex::new(()),
+            cache: Mutex::new(HashMap::new()),
+            inflight: Mutex::new(HashMap::new()),
         }
     }
 
@@ -79,31 +95,152 @@ impl YtDlp {
         config: &EngineConfig,
         cancel: &CancellationToken,
     ) -> Result<Option<Manifest>, MediaJobError> {
+        let key = video_id(&request.url).unwrap_or_else(|| request.url.clone());
+        loop {
+            if let Some(manifest) = self.cached(&key) {
+                return Ok(Some(manifest));
+            }
+            let wait = {
+                let mut inflight = self.inflight.lock().unwrap();
+                if let Some(notify) = inflight.get(&key) {
+                    Some(notify.clone())
+                } else {
+                    inflight.insert(key.clone(), Arc::new(Notify::new()));
+                    None
+                }
+            };
+            let Some(notify) = wait else {
+                break;
+            };
+            tokio::select! {
+                _ = cancel.cancelled() => return Ok(None),
+                _ = notify.notified() => {}
+            }
+        }
+        struct InflightGuard<'a> {
+            ytdlp: &'a YtDlp,
+            key: String,
+        }
+        impl Drop for InflightGuard<'_> {
+            fn drop(&mut self) {
+                if let Some(notify) = self.ytdlp.inflight.lock().unwrap().remove(&self.key) {
+                    notify.notify_waiters();
+                }
+            }
+        }
+        let _guard = InflightGuard {
+            ytdlp: self,
+            key: key.clone(),
+        };
+
+        let result = self.read_uncached(client, request, config, cancel).await;
+        if let Ok(Some(manifest)) = &result {
+            let mut cache = self.cache.lock().unwrap();
+            cache.retain(|_, (at, _)| at.elapsed() < CACHE_TTL);
+            if cache.len() >= MAX_CACHED
+                && let Some(oldest) = cache
+                    .iter()
+                    .min_by_key(|(_, (at, _))| *at)
+                    .map(|(k, _)| k.clone())
+            {
+                cache.remove(&oldest);
+            }
+            cache.insert(key, (Instant::now(), manifest.clone()));
+        }
+        result
+    }
+
+    fn cached(&self, key: &str) -> Option<Manifest> {
+        let mut cache = self.cache.lock().unwrap();
+        let (at, manifest) = cache.get(key)?;
+        if at.elapsed() < CACHE_TTL {
+            Some(manifest.clone())
+        } else {
+            cache.remove(key);
+            None
+        }
+    }
+
+    async fn read_uncached(
+        &self,
+        client: &reqwest::Client,
+        request: &Request,
+        config: &EngineConfig,
+        cancel: &CancellationToken,
+    ) -> Result<Option<Manifest>, MediaJobError> {
+        if self.release.is_some()
+            && let Some(id) = video_id(&request.url)
+        {
+            match direct_player(client, &id, cancel).await {
+                Ok(None) => return Ok(None),
+                Ok(Some(manifest)) => return Ok(Some(manifest)),
+                Err(_) => {}
+            }
+        }
         if !self.ensure(client, config, cancel).await? {
             return Ok(None);
         }
         let cookies = Url::parse(&request.url)
             .ok()
             .and_then(|url| request.cookies.header_for(&url));
-        let first = match self
-            .describe(&request.url, cookies.as_deref(), cancel)
-            .await
+        // Try the fast unauthenticated visionos client first (skips webpage & JS player
+        // requests); fall back to full extraction with cookies when needed.
+        if let Ok(Some(json)) = self.describe(&request.url, None, true, cancel).await
+            && let Ok(manifest) = manifest_from(&json)
         {
+            return Ok(Some(manifest));
+        }
+        let first = match self.describe(&request.url, None, false, cancel).await {
             Ok(None) => return Ok(None),
-            Ok(Some(json)) => return Ok(Some(manifest_from(&json)?)),
-            Err(e) => e,
+            Ok(Some(json)) => match manifest_from(&json) {
+                Ok(manifest) => return Ok(Some(manifest)),
+                Err(e) if cookies.is_none() => e,
+                Err(_) => match self
+                    .describe(&request.url, cookies.as_deref(), false, cancel)
+                    .await
+                {
+                    Ok(None) => return Ok(None),
+                    Ok(Some(json)) => return Ok(Some(manifest_from(&json)?)),
+                    Err(e) => e,
+                },
+            },
+            Err(e) if cookies.is_none() => e,
+            Err(_) => match self
+                .describe(&request.url, cookies.as_deref(), false, cancel)
+                .await
+            {
+                Ok(None) => return Ok(None),
+                Ok(Some(json)) => return Ok(Some(manifest_from(&json)?)),
+                Err(e) => e,
+            },
         };
         // A YouTube change is the usual cause; a newer yt-dlp usually copes.
         if self.release.is_none() || !self.update().await {
             return Err(first.into());
         }
-        match self
-            .describe(&request.url, cookies.as_deref(), cancel)
-            .await
-        {
+        match self.describe(&request.url, None, false, cancel).await {
             Ok(None) => Ok(None),
-            Ok(Some(json)) => Ok(Some(manifest_from(&json)?)),
-            Err(e) => Err(e.into()),
+            Ok(Some(json)) => match manifest_from(&json) {
+                Ok(manifest) => Ok(Some(manifest)),
+                Err(e) if cookies.is_none() => Err(e.into()),
+                Err(_) => match self
+                    .describe(&request.url, cookies.as_deref(), false, cancel)
+                    .await
+                {
+                    Ok(None) => Ok(None),
+                    Ok(Some(json)) => Ok(Some(manifest_from(&json)?)),
+                    Err(e) => Err(e.into()),
+                },
+            },
+            Err(e) if cookies.is_none() => Err(e.into()),
+            Err(_) => match self
+                .describe(&request.url, cookies.as_deref(), false, cancel)
+                .await
+            {
+                Ok(None) => Ok(None),
+                Ok(Some(json)) => Ok(Some(manifest_from(&json)?)),
+                Err(e) => Err(e.into()),
+            },
         }
     }
 
@@ -203,6 +340,7 @@ impl YtDlp {
         &self,
         url: &str,
         cookies: Option<&str>,
+        fast: bool,
         cancel: &CancellationToken,
     ) -> Result<Option<String>, MediaError> {
         let mut command = self.command();
@@ -211,7 +349,21 @@ impl YtDlp {
             "--no-playlist",
             "--no-warnings",
             "--ignore-config",
+            "--js-runtimes",
+            "deno",
+            "--js-runtimes",
+            "node",
+            "--js-runtimes",
+            "quickjs",
+            "--js-runtimes",
+            "bun",
         ]);
+        if fast {
+            command.args([
+                "--extractor-args",
+                "youtube:player_client=visionos;player_skip=webpage,configs,js",
+            ]);
+        }
         if let Some(cookies) = cookies {
             command.arg("--add-header").arg(format!("Cookie:{cookies}"));
         }
@@ -254,6 +406,155 @@ impl YtDlp {
         command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         command
     }
+}
+
+/// Queries YouTube's VISIONOS player API directly (~300 ms) and translates its response
+/// into the JSON shape [`manifest_from`] expects. Falls back to yt-dlp when the video needs
+/// signature deciphering, cookies or age verification.
+async fn direct_player(
+    client: &reqwest::Client,
+    id: &str,
+    cancel: &CancellationToken,
+) -> Result<Option<Manifest>, MediaError> {
+    let body = serde_json::json!({
+        "videoId": id,
+        "context": {
+            "client": {
+                "clientName": "VISIONOS",
+                "clientVersion": "0.1",
+                "hl": "en",
+                "gl": "US"
+            }
+        }
+    });
+    let send = client
+        .post(PLAYER_API)
+        .header("User-Agent", VISIONOS_UA)
+        .header("Content-Type", "application/json")
+        .header("Origin", "https://www.youtube.com")
+        .body(body.to_string())
+        .send();
+    let response = tokio::select! {
+        _ = cancel.cancelled() => return Ok(None),
+        res = tokio::time::timeout(Duration::from_secs(6), send) => res
+            .map_err(|_| MediaError::Unsupported("YouTube player API timed out".into()))?
+            .map_err(|e| MediaError::Unsupported(e.to_string()))?,
+    };
+    if !response.status().is_success() {
+        return Err(MediaError::Unsupported(format!(
+            "HTTP {}",
+            response.status()
+        )));
+    }
+    let bytes = tokio::select! {
+        _ = cancel.cancelled() => return Ok(None),
+        val = response.bytes() => val.map_err(|e| MediaError::Invalid(e.to_string()))?,
+    };
+    let player: Value =
+        serde_json::from_slice(&bytes).map_err(|e| MediaError::Invalid(e.to_string()))?;
+    if player["playabilityStatus"]["status"].as_str() != Some("OK") {
+        return Err(MediaError::Unsupported("not directly playable".into()));
+    }
+    let details = &player["videoDetails"];
+    if details["videoId"].as_str() != Some(id) {
+        return Err(MediaError::Invalid("wrong videoId".into()));
+    }
+    let is_live = details["isLive"].as_bool() == Some(true)
+        || details["isLiveContent"].as_bool() == Some(true)
+            && details["isUpcoming"].as_bool() == Some(true);
+    let duration = details["lengthSeconds"]
+        .as_str()
+        .and_then(|s| s.parse::<f64>().ok())
+        .filter(|d| *d > 0.0);
+
+    let mut formats = Vec::new();
+    for list in [
+        &player["streamingData"]["formats"],
+        &player["streamingData"]["adaptiveFormats"],
+    ] {
+        let Some(items) = list.as_array() else {
+            continue;
+        };
+        for item in items {
+            let Some(url) = item["url"].as_str() else {
+                continue;
+            };
+            let mime = item["mimeType"].as_str().unwrap_or_default();
+            let (kind_ext, codecs) = mime.split_once(';').unwrap_or((mime, ""));
+            let (media_type, sub) = kind_ext.trim().split_once('/').unwrap_or(("", "mp4"));
+            let is_audio = media_type == "audio";
+            let is_video = media_type == "video";
+            if !is_audio && !is_video {
+                continue;
+            }
+            let ext = match (is_audio, sub.trim()) {
+                (true, "mp4") => "m4a",
+                (_, "webm") => "webm",
+                _ => "mp4",
+            };
+            let codec_str = codecs
+                .split_once("codecs=\"")
+                .and_then(|(_, rest)| rest.split_once('"'))
+                .map(|(c, _)| c.trim())
+                .unwrap_or_default();
+            let (vcodec, acodec) = if is_video && codec_str.contains(',') {
+                let (v, a) = codec_str.split_once(',').unwrap();
+                (v.trim(), a.trim())
+            } else if is_video {
+                (
+                    if codec_str.is_empty() { "avc1" } else { codec_str },
+                    "none",
+                )
+            } else {
+                (
+                    "none",
+                    if codec_str.is_empty() { "mp4a" } else { codec_str },
+                )
+            };
+            let bitrate = item["averageBitrate"]
+                .as_f64()
+                .or_else(|| item["bitrate"].as_f64())
+                .unwrap_or(0.0);
+            let filesize = item["contentLength"]
+                .as_str()
+                .and_then(|s| s.parse::<u64>().ok());
+            let language = item["audioTrack"]["id"]
+                .as_str()
+                .map(|id| id.split('.').next().unwrap_or(id));
+            let is_default_audio = item["audioTrack"]["audioIsDefault"].as_bool() == Some(true);
+            let itag = item["itag"]
+                .as_i64()
+                .map(|n| n.to_string())
+                .unwrap_or_default();
+            formats.push(serde_json::json!({
+                "format_id": itag,
+                "url": url,
+                "protocol": "https",
+                "ext": ext,
+                "vcodec": vcodec,
+                "acodec": acodec,
+                "width": item["width"],
+                "height": item["height"],
+                "fps": item["fps"],
+                "tbr": bitrate / 1000.0,
+                "filesize": filesize,
+                "language": language,
+                "language_preference": if is_default_audio { 10 } else { -1 },
+                "http_headers": {
+                    "User-Agent": VISIONOS_UA
+                }
+            }));
+        }
+    }
+    let synth = serde_json::json!({
+        "id": id,
+        "title": details["title"],
+        "duration": duration,
+        "is_live": is_live,
+        "live_status": if is_live { "is_live" } else { "not_live" },
+        "formats": formats
+    });
+    manifest_from(&synth.to_string()).map(Some)
 }
 
 /// Whether `url` is a YouTube video's page (a watch page, a short, an embed or a `youtu.be`
@@ -447,24 +748,28 @@ pub fn manifest_from(json: &str) -> Result<Manifest, MediaError> {
         ))
     });
 
-    let (qualities, audio) = if qualities.is_empty() {
-        // Sound only (music): the sound tracks are the qualities.
-        let qualities = audio
-            .into_iter()
-            .map(|a| Quality {
-                bandwidth: a.bandwidth.unwrap_or(0),
-                width: None,
-                height: None,
-                frame_rate: None,
-                codecs: a.codecs,
-                audio_group: None,
-                source: a.source,
-            })
-            .collect();
-        (qualities, Vec::new())
-    } else {
-        (qualities, audio)
-    };
+    let only_sound = qualities.is_empty();
+    // Offer sound-only qualities too (one per bitrate/container on the default language),
+    // so the "Sound only" tab and quality picker work on any YouTube video.
+    let default_lang = sounds.first().and_then(|s| s.language.as_deref());
+    let mut sound_only: Vec<&Format> = formats
+        .iter()
+        .filter(|f| f.audio && !f.video && f.language.as_deref() == default_lang)
+        .collect();
+    sound_only.sort_by_key(|s| std::cmp::Reverse((s.ext == "m4a", s.bandwidth)));
+    sound_only.dedup_by(|a, b| a.ext == b.ext && a.bandwidth.abs_diff(b.bandwidth) < 8_000);
+    for sound in sound_only {
+        qualities.push(Quality {
+            bandwidth: sound.bandwidth,
+            width: None,
+            height: None,
+            frame_rate: None,
+            codecs: sound.codecs.clone(),
+            audio_group: None,
+            source: Source::Track(track_of(sound, duration)),
+        });
+    }
+    let audio = if only_sound { Vec::new() } else { audio };
 
     Ok(Manifest {
         kind: StreamKind::YouTube,
@@ -714,13 +1019,15 @@ mod tests {
                 Source::Playlist(_) => unreachable!(),
             })
             .collect();
-        // 1080p60, then 1080p (MP4 over WebM), then 360p (with its sound, one file).
+        // 1080p60, then 1080p (MP4 over WebM), then 360p (with its sound, one file), then sound-only.
         assert_eq!(
             picked,
             [
                 (Some(1080), "299".to_owned()),
                 (Some(1080), "137".to_owned()),
-                (Some(360), "18".to_owned())
+                (Some(360), "18".to_owned()),
+                (None, "140".to_owned()),
+                (None, "251".to_owned()),
             ]
         );
         assert_eq!(manifest.qualities[1].audio_group.as_deref(), Some("audio"));

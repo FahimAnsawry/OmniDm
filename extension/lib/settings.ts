@@ -22,6 +22,6 @@ export const DEFAULT_SETTINGS: CaptureSettings = {
   minSize: 0,
   fileTypes: [],
   excludedSites: [],
-  capturePrivate: false,
+  capturePrivate: true,
   videoButton: true,
 };

@@ -228,10 +228,11 @@ pub async fn run_media(
     let mut joined = Vec::new();
     for (name, track) in &ready {
         let file = work.join(format!("{name}.{}", track.container.extension()));
+        let is_sound = *name == "sound" || (quality.height.is_none() && quality.width.is_none());
         joined.push(Joined {
             path: file.clone(),
             container: track.container,
-            sound: *name == "sound",
+            sound: is_sound,
         });
         // Joined already, by a run that stopped before it could finish up.
         if file.is_file() && !work.join(name).exists() {

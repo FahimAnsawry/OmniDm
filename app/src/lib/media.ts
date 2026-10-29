@@ -62,9 +62,11 @@ export function formatBitrate(bitsPerSecond: number): string {
     : `${Math.round(bitsPerSecond / 1000)} kbit/s`;
 }
 
-/** "1080p", "1080p60", or "Sound only" for a stream without a picture. */
+/** "1080p", "1080p60", or "Sound only (130 kbit/s)" for a stream without a picture. */
 export function qualityName(quality: MediaQuality): string {
-  if (quality.height == null && quality.width == null) return "Sound only";
+  if (quality.height == null && quality.width == null) {
+    return quality.bandwidth > 0 ? `Sound only (${formatBitrate(quality.bandwidth)})` : "Sound only";
+  }
   const lines = quality.height ?? quality.width;
   const fps = quality.frameRate && quality.frameRate > 30.5 ? Math.round(quality.frameRate) : "";
   return `${lines}p${fps}`;

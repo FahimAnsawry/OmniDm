@@ -1,11 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window, capture prompts, details and video windows: pick folders, close and retitle themselves; a prompt also leaves the top",
+  "description": "The main window, capture prompts, details and video windows: pick folders, move, minimize, maximize, close and retitle themselves; a prompt also leaves the top",
   "windows": ["main", "capture-*", "details-*", "media-*"],
   "permissions": [
     "core:default",
     "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-start-dragging",
     "core:window:allow-set-title",
     "core:window:allow-set-always-on-top",
     "dialog:allow-open"

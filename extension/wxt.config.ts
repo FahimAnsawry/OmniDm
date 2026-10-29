@@ -19,8 +19,12 @@ export default defineConfig({
   manifest: ({ browser }) => ({
     name: 'OmniDm',
     description: 'Send downloads from your browser to the OmniDm download manager.',
+    action: {
+      default_title: 'OmniDm (click to disable)',
+    },
     permissions: [
       'downloads',
+      ...(browser === 'firefox' ? [] : ['downloads.ui']),
       'nativeMessaging',
       'contextMenus',
       'cookies',

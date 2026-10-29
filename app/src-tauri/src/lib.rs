@@ -135,6 +135,7 @@ pub fn run() {
             stop_queue,
             open_file,
             show_in_folder,
+            open_extension_guide,
             cancel_after_queue,
             add_download,
             look_at_media,
@@ -176,28 +177,39 @@ fn list_categories(manager: tauri::State<'_, Manager>) -> Vec<CategorySummary> {
 
 // Async, so it runs on the runtime: pausing may start a queue's next download.
 #[tauri::command]
-async fn pause_downloads(manager: tauri::State<'_, Manager>, ids: Vec<i64>) -> Result<(), String> {
+async fn pause_downloads(
+    app: AppHandle,
+    manager: tauri::State<'_, Manager>,
+    ids: Vec<i64>,
+) -> Result<(), String> {
     for id in ids {
         manager.pause(id);
     }
+    let _ = app.emit("downloads-changed", ());
     Ok(())
 }
 
 /// Continues downloads; the first error is reported once all have been tried.
 #[tauri::command]
-async fn resume_downloads(manager: tauri::State<'_, Manager>, ids: Vec<i64>) -> Result<(), String> {
+async fn resume_downloads(
+    app: AppHandle,
+    manager: tauri::State<'_, Manager>,
+    ids: Vec<i64>,
+) -> Result<(), String> {
     let mut first_error = None;
     for id in ids {
         if let Err(e) = manager.resume(id).await {
             first_error.get_or_insert(e);
         }
     }
+    let _ = app.emit("downloads-changed", ());
     first_error.map_or(Ok(()), Err)
 }
 
 /// Removes downloads from the list, and their files with `delete_files`.
 #[tauri::command]
 async fn delete_downloads(
+    app: AppHandle,
     manager: tauri::State<'_, Manager>,
     ids: Vec<i64>,
     delete_files: bool,
@@ -208,6 +220,7 @@ async fn delete_downloads(
             first_error.get_or_insert(e);
         }
     }
+    let _ = app.emit("downloads-changed", ());
     first_error.map_or(Ok(()), Err)
 }
 
@@ -363,6 +376,13 @@ fn show_in_folder(manager: tauri::State<'_, Manager>, id: i64) -> Result<(), Str
         tauri_plugin_opener::open_path(dir, None::<&str>)
     };
     shown.map_err(|e| format!("can't show {}: {e}", file.display()))
+}
+
+/// Opens the page that tells how to install the browser extension (it isn't in the stores).
+#[tauri::command]
+fn open_extension_guide() -> Result<(), String> {
+    let page = concat!(env!("CARGO_PKG_HOMEPAGE"), "#readme");
+    tauri_plugin_opener::open_url(page, None::<&str>).map_err(|e| format!("can't open {page}: {e}"))
 }
 
 /// Wake timers and keep-awake for the scheduler; without them, schedules still run while

@@ -10,14 +10,13 @@ import type { Capture } from '../../protocol/ts/Capture';
 import type { MediaFound } from '../../protocol/ts/MediaFound';
 import type { MediaInfo } from '../../protocol/ts/MediaInfo';
 import type { MediaQualityPick } from '../../protocol/ts/MediaQualityPick';
-import { handleCreated, type CaptureDeps } from '../lib/capture';
+import { handleCreated, type CaptureDeps, type DownloadItemLike } from '../lib/capture';
 import { toBrowserCookie } from '../lib/cookies';
 import { encodeRequestBody, HeaderCache, type RequestBodyLike } from '../lib/header-cache';
 import { collectLinks, httpLinks } from '../lib/links';
 import {
   addFound,
   applyInspection,
-  downloadable,
   forFrame,
   inspectPlaylist,
   shown,
@@ -29,8 +28,9 @@ import {
   type PlaylistKind,
 } from '../lib/media';
 import { NativeLink, type LinkStatus } from '../lib/native';
-import { badgeFor, badgeForTab, shouldOpenSetup, type Badge } from '../lib/notice';
-import { loadSettings } from '../lib/settings-store';
+import { badgeFor, shouldOpenSetup, type Badge } from '../lib/notice';
+import { DEFAULT_SETTINGS, type CaptureSettings } from '../lib/settings';
+import { loadSettings, settingsItem } from '../lib/settings-store';
 import type { FrameVideo } from './video-button';
 
 /** The host's registered name (plan §3). */
@@ -42,7 +42,7 @@ const MENU_SELECTED = 'omnidm-selected-links';
 /** A bigger "playlist" is not one; it isn't read. */
 const PLAYLIST_LIMIT = 5 * 1024 * 1024;
 /** How long what a video offers is remembered for its menu. */
-const LOOK_KEPT_MS = 2 * 60_000;
+const LOOK_KEPT_MS = 10 * 60_000;
 
 /** Messages from the popup, the setup page and the button on videos. */
 export type PopupRequest =
@@ -93,23 +93,24 @@ export default defineBackground(() => {
     })
     .catch(() => undefined);
 
-  // --- the toolbar badge: the "Install OmniDm" notice while the app can't be found, else
-  // how many videos the page has ---
+  // --- the toolbar badge: the "Install OmniDm" notice while the app can't be found, or
+  // "OFF" when the extension is disabled ---
   let linkStatus: LinkStatus = link.status;
-  const setBadge = (badge: Badge, tabId?: number) => {
-    const tab = tabId === undefined ? {} : { tabId };
-    void browser.action.setBadgeText({ text: badge.text, ...tab }).catch(() => undefined);
-    void browser.action.setBadgeBackgroundColor({ color: badge.color, ...tab }).catch(() => undefined);
-    void browser.action.setTitle({ title: badge.title, ...tab }).catch(() => undefined);
+  let currentSettings: CaptureSettings = DEFAULT_SETTINGS;
+  let settingsLoaded = false;
+  const setBadge = (badge: Badge) => {
+    void browser.action.setBadgeText({ text: badge.text }).catch(() => undefined);
+    void browser.action.setBadgeBackgroundColor({ color: badge.color }).catch(() => undefined);
+    void browser.action.setTitle({ title: badge.title }).catch(() => undefined);
   };
-  const showTabBadge = (tabId: number) =>
-    setBadge(badgeForTab(linkStatus, downloadable(found.get(tabId) ?? [])), tabId);
+  const updateBadge = () => {
+    setBadge(badgeFor(linkStatus, currentSettings.enabled));
+  };
   const showBadge = (status: LinkStatus) => {
     // Keep the last badge while trying again, so it doesn't flicker.
     if (status === 'connecting') return;
     linkStatus = status;
-    setBadge(badgeFor(status));
-    for (const tabId of found.keys()) showTabBadge(tabId);
+    updateBadge();
   };
   link.onStatus(showBadge);
 
@@ -117,7 +118,6 @@ export default defineBackground(() => {
     const list = change(found.get(tabId) ?? []);
     if (list.length > 0) found.set(tabId, list);
     else found.delete(tabId);
-    showTabBadge(tabId);
     void foundItem.setValue(Object.fromEntries(found)).catch(() => undefined);
   };
 
@@ -136,7 +136,8 @@ export default defineBackground(() => {
 
   /** Puts the Download button into the frame where a video was found. */
   const addButton = async (tabId: number, frameId: number) => {
-    if (!(await loadSettings()).videoButton) return;
+    const s = settingsLoaded ? currentSettings : await loadSettings();
+    if (!s.enabled || !s.videoButton) return;
     await browser.scripting
       .executeScript({ target: { tabId, frameIds: [frameId] }, files: ['/video-button.js'] })
       .catch(() => undefined);
@@ -167,11 +168,14 @@ export default defineBackground(() => {
   // YouTube moves between videos without loading a new page.
   const noticeYoutube = async (tabId: number, frameId: number, video: string) => {
     await restored;
+    const item = youtubeFound(video, frameId);
     updateFound(tabId, (list) => [
       // Its page shows one video at a time; an embedded player adds one.
       ...list.filter((item) => item.kind !== 'youtube' || (item.frameId ?? 0) !== frameId),
-      youtubeFound(video, frameId),
+      item,
     ]);
+    // Pre-fetch YouTube qualities in the background so the menu opens with no wait.
+    void lookAt(tabId, item).catch(() => undefined);
     await addButton(tabId, frameId);
   };
   browser.tabs.onUpdated.addListener((tabId, change, tab) => {
@@ -238,8 +242,61 @@ export default defineBackground(() => {
   );
 
   // --- the handoff ---
+  type DownloadsWithUi = typeof browser.downloads & {
+    setUiOptions?: (options: { enabled: boolean }) => Promise<void>;
+    onDeterminingFilename?: {
+      addListener(
+        callback: (item: DownloadItemLike, suggest: () => void) => boolean | void,
+      ): void;
+    };
+  };
+  const downloadsApi = browser.downloads as DownloadsWithUi;
+  const setDownloadUi = (enabled: boolean) => {
+    void downloadsApi.setUiOptions?.({ enabled }).catch(() => undefined);
+  };
+  const syncDownloadUi = () => {
+    setDownloadUi(!currentSettings.enabled);
+  };
+  void loadSettings()
+    .then((s) => {
+      currentSettings = s;
+      settingsLoaded = true;
+      syncDownloadUi();
+      updateBadge();
+    })
+    .catch(() => undefined);
+  settingsItem.watch((s) => {
+    currentSettings = { ...DEFAULT_SETTINGS, ...s };
+    settingsLoaded = true;
+    syncDownloadUi();
+    updateBadge();
+  });
+
+  // Clicking the toolbar icon toggles the extension on or off.
+  browser.action.onClicked.addListener(async () => {
+    const current = settingsLoaded ? currentSettings : await loadSettings();
+    const enabled = !current.enabled;
+    const next: CaptureSettings = {
+      ...current,
+      enabled,
+      videoButton: enabled,
+    };
+    currentSettings = next;
+    settingsLoaded = true;
+    syncDownloadUi();
+    updateBadge();
+    await settingsItem.setValue(next).catch(() => undefined);
+    if (enabled) {
+      if (link.status !== 'connected') void link.open();
+      for (const [tabId, list] of found.entries()) {
+        const frames = new Set(list.map((item) => item.frameId ?? 0));
+        for (const frameId of frames) void addButton(tabId, frameId);
+      }
+    }
+  });
+
   const deps: CaptureDeps = {
-    settings: loadSettings,
+    settings: async () => (settingsLoaded ? currentSettings : loadSettings()),
     downloads: {
       pause: (id) => browser.downloads.pause(id),
       resume: (id) => browser.downloads.resume(id),
@@ -251,9 +308,30 @@ export default defineBackground(() => {
     request: (message, timeoutMs) => link.request(message, timeoutMs),
     now: () => Date.now(),
   };
-  browser.downloads.onCreated.addListener((item) => {
-    void handleCreated(item, deps);
-  });
+  if (downloadsApi.onDeterminingFilename) {
+    browser.downloads.onCreated.addListener(() => {
+      if (currentSettings.enabled) setDownloadUi(false);
+    });
+    downloadsApi.onDeterminingFilename.addListener((item, suggest) => {
+      if (currentSettings.enabled) setDownloadUi(false);
+      void handleCreated(item, deps, () => {
+        try {
+          suggest();
+        } catch {
+          // Ignore if the browser already dropped the download.
+        }
+      }).then((outcome) => {
+        if (outcome !== 'captured') {
+          setDownloadUi(true);
+        }
+      });
+      return true;
+    });
+  } else {
+    browser.downloads.onCreated.addListener((item) => {
+      void handleCreated(item, deps);
+    });
+  }
 
   // --- context menus ---
   browser.runtime.onInstalled.addListener((details) => {
@@ -321,24 +399,35 @@ export default defineBackground(() => {
 
   /** What a video offers, asked of the app (which reads its playlist), kept a while. */
   const looks = new Map<string, { at: number; video: FrameVideo }>();
+  const inflightLooks = new Map<string, Promise<FrameVideo>>();
   const lookAt = async (tabId: number, item: FoundMedia): Promise<FrameVideo> => {
     const kept = looks.get(item.url);
     if (kept && Date.now() - kept.at < LOOK_KEPT_MS) return kept.video;
-    let video: FrameVideo;
+    const pending = inflightLooks.get(item.url);
+    if (pending) return pending;
+    const task = (async (): Promise<FrameVideo> => {
+      let video: FrameVideo;
+      try {
+        const payload = await mediaFound(tabId, item);
+        // yt-dlp can take a while, and the first time it is downloaded too.
+        const timeout = item.kind === 'youtube' ? 150_000 : 30_000;
+        const reply = await link.request({ type: 'mediaLook', payload }, timeout);
+        if (reply.type === 'mediaInfo') video = { url: item.url, info: reply.payload as MediaInfo };
+        else if (reply.type === 'error') video = { url: item.url, error: reply.payload.message };
+        else video = { url: item.url, error: 'OmniDm gave an unexpected answer.' };
+      } catch (e) {
+        // Not kept: OmniDm may be back next time.
+        return { url: item.url, error: e instanceof Error ? e.message : String(e) };
+      }
+      if (video.info) looks.set(item.url, { at: Date.now(), video });
+      return video;
+    })();
+    inflightLooks.set(item.url, task);
     try {
-      const payload = await mediaFound(tabId, item);
-      // yt-dlp can take a while, and the first time it is downloaded too.
-      const timeout = item.kind === 'youtube' ? 150_000 : 30_000;
-      const reply = await link.request({ type: 'mediaLook', payload }, timeout);
-      if (reply.type === 'mediaInfo') video = { url: item.url, info: reply.payload as MediaInfo };
-      else if (reply.type === 'error') video = { url: item.url, error: reply.payload.message };
-      else video = { url: item.url, error: 'OmniDm gave an unexpected answer.' };
-    } catch (e) {
-      // Not kept: OmniDm may be back next time.
-      return { url: item.url, error: e instanceof Error ? e.message : String(e) };
+      return await task;
+    } finally {
+      inflightLooks.delete(item.url);
     }
-    looks.set(item.url, { at: Date.now(), video });
-    return video;
   };
 
   /** Sends a found video to the app, which opens its quality window (with `quality`
@@ -369,7 +458,18 @@ export default defineBackground(() => {
     const tabId = sender.tab?.id;
     if (message?.type === 'videoQualities' && tabId !== undefined) {
       return restored.then(async () => {
-        const here = forFrame(found.get(tabId) ?? [], sender.frameId ?? 0);
+        const frameId = sender.frameId ?? 0;
+        let here = forFrame(found.get(tabId) ?? [], frameId);
+        // If the tab was already open before the extension reloaded, recover a YouTube page's video.
+        if (here.length === 0 && frameId === 0) {
+          const url = sender.tab?.url ?? (await browser.tabs.get(tabId).catch(() => undefined))?.url;
+          const video = url ? youtubeVideo(url) : undefined;
+          if (video) {
+            const item = youtubeFound(video, 0);
+            updateFound(tabId, (list) => [...list.filter((i) => i.kind !== 'youtube' || i.frameId), item]);
+            here = [item];
+          }
+        }
         return { videos: await Promise.all(here.map((item) => lookAt(tabId, item))) };
       });
     }

@@ -99,8 +99,8 @@ impl Manager {
     }
 
     /// The category of a file, by its name, MIME type and URL, and the folder to save it
-    /// in: the category's own folder, or `fallback`. A category folder that can't be made
-    /// falls back too. The folder is made if it doesn't exist yet.
+    /// in: the category's own folder (defaulting to `<fallback>/<category name>`), or
+    /// `fallback` when no category matches. The folder is made if it doesn't exist yet.
     pub(super) fn place(
         &self,
         file_name: &str,
@@ -109,13 +109,19 @@ impl Manager {
         fallback: &Path,
     ) -> (Option<CategoryId>, PathBuf) {
         let category = self.category_for(file_name, mime, url);
-        let dir = match category.as_ref().and_then(|c| c.settings.save_dir.as_ref()) {
-            Some(folder) if std::fs::create_dir_all(folder).is_ok() => PathBuf::from(folder),
-            _ => {
-                // A failure shows when the download starts, with the reason.
-                let _ = std::fs::create_dir_all(fallback);
-                fallback.to_path_buf()
-            }
+        let wanted = match &category {
+            Some(c) => match &c.settings.save_dir {
+                Some(folder) => PathBuf::from(folder),
+                None => fallback.join(omnidm_net::naming::sanitize_file_name(&c.settings.name)),
+            },
+            None => fallback.to_path_buf(),
+        };
+        let dir = if std::fs::create_dir_all(&wanted).is_ok() {
+            wanted
+        } else {
+            // A failure shows when the download starts, with the reason.
+            let _ = std::fs::create_dir_all(fallback);
+            fallback.to_path_buf()
         };
         (category.map(|c| c.id), dir)
     }

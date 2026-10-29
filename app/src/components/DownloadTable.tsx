@@ -3,7 +3,7 @@
 // The download list. Only the rows in view are drawn, so long lists stay smooth.
 
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { KeyboardEvent, MouseEvent } from "react";
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import {
   type Row,
   type Sort,
@@ -14,27 +14,28 @@ import {
   secondsLeft,
 } from "../lib/downloads";
 import { formatAdded, formatBytes, formatDuration, formatFullDate, formatSpeed } from "../lib/format";
-import { Icon } from "./Icon";
+import { FileIcon } from "./Chrome";
+import { Icon, type IconName } from "./Icon";
 
-const ROW_HEIGHT = 34;
+/** A row and the gap under it. */
+const ROW_HEIGHT = 50;
+/** Space above the first row. */
+const TOP = 2;
 /** Rows drawn beyond each edge of the view, so fast scrolling doesn't show gaps. */
 const OVERSCAN = 8;
-const COLUMNS = "grid-cols-[minmax(12rem,1fr)_5.5rem_8.5rem_5.5rem_4.75rem_6.5rem_5.5rem]";
+const COLUMNS = "grid-cols-[minmax(0,1fr)_72px_170px_80px_64px_72px] gap-4";
 
 const HEADERS: { key: SortKey; label: string; align?: "right" }[] = [
   { key: "name", label: "Name" },
   { key: "size", label: "Size", align: "right" },
   { key: "progress", label: "Progress" },
   { key: "speed", label: "Speed", align: "right" },
-  { key: "left", label: "Time left", align: "right" },
-  { key: "status", label: "Status" },
+  { key: "left", label: "Left", align: "right" },
   { key: "added", label: "Added", align: "right" },
 ];
 
 type Props = {
   rows: Row[];
-  /** No downloads at all, as opposed to none in this view. */
-  empty: boolean;
   selected: Set<number>;
   onSelect: (ids: Set<number>) => void;
   sort: Sort;
@@ -42,6 +43,8 @@ type Props = {
   onOpen: (row: Row) => void;
   onDelete: () => void;
   onContextMenu: (row: Row, x: number, y: number) => void;
+  /** A failed download's Retry. */
+  onRetry: (row: Row) => void;
 };
 
 export function DownloadTable(props: Props) {
@@ -69,11 +72,10 @@ export function DownloadTable(props: Props) {
     const element = scroller.current;
     const index = indexOf(cursor);
     if (!element || index < 0) return;
-    const top = index * ROW_HEIGHT;
-    const header = ROW_HEIGHT;
+    const top = TOP + index * ROW_HEIGHT;
     if (top < element.scrollTop) element.scrollTop = top;
-    else if (top + ROW_HEIGHT > element.scrollTop + element.clientHeight - header)
-      element.scrollTop = top + ROW_HEIGHT - element.clientHeight + header;
+    else if (top + ROW_HEIGHT > element.scrollTop + element.clientHeight)
+      element.scrollTop = top + ROW_HEIGHT - element.clientHeight;
     // Only when the cursor moves, not when rows update.
   }, [cursor]);
 
@@ -172,52 +174,50 @@ export function DownloadTable(props: Props) {
 
   return (
     <div
-      ref={scroller}
       role="grid"
       aria-label="Downloads"
       aria-rowcount={rows.length + 1}
       aria-multiselectable="true"
-      tabIndex={0}
-      onKeyDown={keyDown}
-      onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-      className="relative min-h-0 flex-1 overflow-auto bg-white outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 focus-visible:ring-inset dark:bg-neutral-950"
+      className="flex min-h-0 flex-1 flex-col"
     >
-      <div className="min-w-[46rem]">
-        <div
-          role="row"
-          aria-rowindex={1}
-          className={`sticky top-0 z-10 grid ${COLUMNS} h-[34px] items-center border-b border-neutral-200 bg-neutral-50/95 text-[11px] font-semibold tracking-wide text-neutral-500 uppercase backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/95`}
-        >
-          {HEADERS.map(({ key, label, align }) => {
-            const sorted = props.sort?.key === key ? props.sort : null;
-            return (
-              <div
-                key={key}
-                role="columnheader"
-                aria-sort={sorted ? (sorted.descending ? "descending" : "ascending") : undefined}
+      <div
+        role="row"
+        aria-rowindex={1}
+        className={`grid ${COLUMNS} h-[30px] shrink-0 items-center px-6 text-[11.5px] font-semibold tracking-[0.06em] text-[#6b7390] uppercase`}
+      >
+        {HEADERS.map(({ key, label, align }) => {
+          const sorted = props.sort?.key === key ? props.sort : null;
+          return (
+            <div
+              key={key}
+              role="columnheader"
+              aria-sort={sorted ? (sorted.descending ? "descending" : "ascending") : undefined}
+            >
+              <button
+                type="button"
+                onClick={() => sortBy(key)}
+                className={`flex h-[30px] w-full items-center gap-1 whitespace-nowrap uppercase hover:text-[#c9cfdd] ${
+                  align === "right" ? "justify-end" : ""
+                }`}
               >
-                <button
-                  type="button"
-                  onClick={() => sortBy(key)}
-                  className={`flex h-[34px] w-full items-center gap-1 px-3 whitespace-nowrap uppercase hover:text-neutral-800 dark:hover:text-neutral-200 ${
-                    align === "right" ? "justify-end" : ""
-                  }`}
-                >
-                  {label}
-                  {sorted && <Icon name={sorted.descending ? "down" : "up"} className="size-3" />}
-                </button>
-              </div>
-            );
-          })}
-        </div>
+                {label}
+                {sorted && <Icon name={sorted.descending ? "arrow-down" : "arrow-up"} className="size-3" />}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <div
+        ref={scroller}
+        tabIndex={0}
+        onKeyDown={keyDown}
+        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        className="relative min-h-0 flex-1 overflow-y-auto outline-none focus-visible:ring-2 focus-visible:ring-[#6b88ff]/40 focus-visible:ring-inset"
+      >
         {rows.length === 0 ? (
-          <p className="px-6 py-16 text-center text-sm text-neutral-500">
-            {props.empty
-              ? "No downloads yet. Click a download link in your browser and it appears here."
-              : "Nothing here."}
-          </p>
+          <p className="px-6 py-16 text-center text-[13px] text-[#8b93a9]">Nothing here.</p>
         ) : (
-          <div style={{ height: rows.length * ROW_HEIGHT }} className="relative">
+          <div style={{ height: rows.length * ROW_HEIGHT + TOP * 2 }} className="relative">
             {rows.slice(first, last).map((row, offset) => {
               const index = first + offset;
               return (
@@ -229,6 +229,7 @@ export function DownloadTable(props: Props) {
                   cursor={index === cursorIndex}
                   onClick={click}
                   onDoubleClick={props.onOpen}
+                  onRetry={props.onRetry}
                   onContextMenu={(event) => {
                     event.preventDefault();
                     if (!selected.has(row.downloadId)) {
@@ -248,13 +249,102 @@ export function DownloadTable(props: Props) {
   );
 }
 
-const STATUS_STYLE: Record<string, string> = {
-  running: "text-sky-700 dark:text-sky-400",
-  probing: "text-sky-700 dark:text-sky-400",
-  completed: "text-emerald-700 dark:text-emerald-400",
-  failed: "text-red-700 dark:text-red-400",
-  paused: "text-amber-700 dark:text-amber-400",
-};
+const DASH = "—";
+
+/** A status as a rounded label in the Progress column. */
+function StatusChip({
+  tone,
+  icon,
+  children,
+  title,
+  onClick,
+}: {
+  tone: "green" | "red" | "plain" | "blue";
+  icon?: IconName;
+  children: ReactNode;
+  title?: string;
+  onClick?: () => void;
+}) {
+  const look = {
+    green: { box: "border-[#12b88640] bg-[#12b8861a] text-[#7fe6c4]", dot: "bg-[#2fd3a0]" },
+    red: { box: "border-[#e5484d4d] bg-[#e5484d1f] text-[#ff9a9e] hover:bg-[#e5484d33]", dot: "bg-[#f2555a]" },
+    plain: { box: "border-white/10 bg-white/[0.05] text-[#c9cfdd]", dot: "bg-[#9aa3b8]" },
+    blue: { box: "border-[#6b88ff4d] bg-[#4a6cff1f] text-[#a9bbff]", dot: "bg-[#6b88ff]" },
+  }[tone];
+  const className = `flex w-fit max-w-full items-center gap-1.5 rounded-full border px-[9px] py-[3px] text-xs font-medium whitespace-nowrap ${look.box}`;
+  const inside = (
+    <>
+      {icon ? <Icon name={icon} className="size-3" /> : <span className={`size-1.5 shrink-0 rounded-full ${look.dot}`} />}
+      <span className="truncate">{children}</span>
+    </>
+  );
+  return onClick ? (
+    <button
+      type="button"
+      title={title}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      onDoubleClick={(e) => e.stopPropagation()}
+      className={className}
+    >
+      {inside}
+    </button>
+  ) : (
+    <span title={title} className={className}>
+      {inside}
+    </span>
+  );
+}
+
+/** "Night queue" → "Night". */
+const queueShort = (name: string) => name.replace(/\s+queue$/i, "") || name;
+
+function Progress({ row, onRetry }: { row: Row; onRetry: (row: Row) => void }) {
+  switch (row.status) {
+    case "completed":
+      return <StatusChip tone="green">Completed</StatusChip>;
+    case "failed":
+      return (
+        <StatusChip tone="red" icon="retry" title={row.error} onClick={() => onRetry(row)}>
+          Failed · Retry
+        </StatusChip>
+      );
+    case "queued":
+      return (
+        <StatusChip tone="plain" icon="clock">
+          {row.queue ? `Queued · ${queueShort(row.queue)}` : "Waiting"}
+        </StatusChip>
+      );
+    case "asking":
+      return <StatusChip tone="blue">Asking you</StatusChip>;
+  }
+  const fraction = row.total ? Math.min(1, row.downloaded / row.total) : 0;
+  const running = row.status === "running";
+  const text = running
+    ? row.total
+      ? `${Math.floor(fraction * 100)}%`
+      : formatBytes(row.downloaded)
+    : (STATUS_LABEL[row.status] ?? row.status);
+  return (
+    <div className="flex items-center gap-2.5">
+      <div className="h-1.5 w-[110px] shrink-0 rounded-full bg-white/[0.08]">
+        <div
+          className={`h-full rounded-full ${running ? "bar-fill" : "bg-[#6b7390]"}`}
+          style={{ width: `${fraction * 100}%` }}
+        />
+      </div>
+      <span
+        className={`flex-1 truncate text-right text-xs tabular-nums ${
+          running ? "font-semibold text-[#f4f6fb]" : "font-medium text-[#8b93a9]"
+        }`}
+      >
+        {text}
+      </span>
+    </div>
+  );
+}
 
 type RowProps = {
   row: Row;
@@ -263,6 +353,7 @@ type RowProps = {
   cursor: boolean;
   onClick: (event: MouseEvent, index: number) => void;
   onDoubleClick: (row: Row) => void;
+  onRetry: (row: Row) => void;
   onContextMenu: (event: MouseEvent) => void;
 };
 
@@ -273,19 +364,14 @@ const DownloadRow = memo(function DownloadRow({
   cursor,
   onClick,
   onDoubleClick,
+  onRetry,
   onContextMenu,
 }: RowProps) {
-  const done = row.status === "completed";
-  const fraction = done ? 1 : row.total ? Math.min(1, row.downloaded / row.total) : 0;
   const left = secondsLeft(row);
   const running = row.status === "running";
-  const bar = done
-    ? "bg-emerald-500"
-    : row.status === "failed"
-      ? "bg-red-500"
-      : running
-        ? "bg-sky-500"
-        : "bg-neutral-400 dark:bg-neutral-500";
+  const name = displayName(row);
+  const value = (text: string | null) =>
+    text ? <span className="font-medium text-[#f4f6fb]">{text}</span> : <span className="text-[#6b7390]">{DASH}</span>;
   return (
     <div
       role="row"
@@ -298,45 +384,36 @@ const DownloadRow = memo(function DownloadRow({
       onClick={(e) => onClick(e, index)}
       onDoubleClick={() => onDoubleClick(row)}
       onContextMenu={onContextMenu}
-      style={{ transform: `translateY(${index * ROW_HEIGHT}px)` }}
-      className={`absolute inset-x-0 top-0 grid ${COLUMNS} h-[34px] cursor-default items-center border-b border-neutral-100 text-[13px] select-none dark:border-neutral-900 ${
+      style={{ transform: `translateY(${TOP + index * ROW_HEIGHT}px)` }}
+      className={`absolute inset-x-3 top-0 grid ${COLUMNS} h-12 cursor-default items-center rounded-[10px] border px-3 text-[13px] select-none ${
         selected
-          ? "bg-sky-100 dark:bg-sky-900/40"
-          : "hover:bg-neutral-50 dark:hover:bg-neutral-900"
-      } ${cursor ? "outline outline-1 -outline-offset-1 outline-sky-400/70" : ""}`}
+          ? "border-[#6b88ff4d] bg-[#4a6cff1f]"
+          : cursor
+            ? "border-white/10"
+            : "border-transparent hover:bg-white/[0.03]"
+      }`}
     >
-      <div role="gridcell" className="truncate px-3 font-medium" title={`${displayName(row)}\n${row.url}`}>
-        {displayName(row)}
+      <div role="gridcell" className="flex min-w-0 items-center gap-3" title={`${name}\n${row.url}`}>
+        <FileIcon name={name} flat className="h-[31px] w-[26px]" />
+        <span className={`truncate text-[#f4f6fb] ${selected ? "font-semibold" : "font-medium"}`}>{name}</span>
       </div>
-      <div role="gridcell" className="px-3 text-right text-neutral-600 tabular-nums dark:text-neutral-400">
+      <div role="gridcell" className="text-right text-[#8b93a9] tabular-nums">
         {row.total != null ? formatBytes(row.total) : ""}
       </div>
-      <div role="gridcell" className="flex items-center gap-2 px-3">
-        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-800">
-          <div className={`h-full rounded-full ${bar}`} style={{ width: `${fraction * 100}%` }} />
-        </div>
-        <span className="w-9 text-right text-xs text-neutral-500 tabular-nums">
-          {row.total || done ? `${Math.floor(fraction * 100)}%` : ""}
-        </span>
-      </div>
-      <div role="gridcell" className="px-3 text-right text-neutral-600 tabular-nums dark:text-neutral-400">
-        {running && row.speed != null ? formatSpeed(row.speed) : ""}
-      </div>
-      <div role="gridcell" className="px-3 text-right text-neutral-600 tabular-nums dark:text-neutral-400">
-        {Number.isFinite(left) ? formatDuration(left) : ""}
-      </div>
-      <div
-        role="gridcell"
-        title={row.error}
-        className={`truncate px-3 ${STATUS_STYLE[row.status] ?? "text-neutral-600 dark:text-neutral-400"}`}
-      >
-        {STATUS_LABEL[row.status] ?? row.status}
+      <div role="gridcell" className="min-w-0">
+        <Progress row={row} onRetry={onRetry} />
         {row.error && !isActive(row.status) && <span className="sr-only">: {row.error}</span>}
+      </div>
+      <div role="gridcell" className="text-right tabular-nums">
+        {value(running && row.speed != null ? formatSpeed(row.speed) : null)}
+      </div>
+      <div role="gridcell" className="text-right tabular-nums">
+        {value(Number.isFinite(left) ? formatDuration(left) : null)}
       </div>
       <div
         role="gridcell"
         title={formatFullDate(row.addedAt)}
-        className="px-3 text-right text-neutral-500 tabular-nums"
+        className="text-right whitespace-nowrap text-[#8b93a9] tabular-nums"
       >
         {formatAdded(row.addedAt)}
       </div>

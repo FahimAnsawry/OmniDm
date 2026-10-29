@@ -13,7 +13,7 @@ import { looksLikeStream } from "../lib/media";
 import { Button, Field, FolderField, inputClass, selectClass } from "./Fields";
 import { MediaPicker } from "./MediaPicker";
 
-const CONNECTIONS = [1, 2, 4, 8, 16];
+const CONNECTIONS = [1, 2, 4, 8, 16, 32];
 
 /** Reading a video link's playlist. */
 type MediaState = { status: "reading" } | { status: "ready"; info: MediaInfo } | { status: "failed"; error: string };

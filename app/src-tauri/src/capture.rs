@@ -6,6 +6,8 @@
 use omnidm_ipc::protocol::{AskAbout, CaptureAnswer};
 use omnidm_service::manager::Manager;
 use tauri::menu::CheckMenuItem;
+use tauri::webview::PageLoadEvent;
+use tauri::window::Color;
 use tauri::{AppHandle, Emitter, Manager as _, WebviewUrl, WebviewWindowBuilder, Wry};
 
 /// The saved setting: `"false"` when captures start without asking.
@@ -26,17 +28,28 @@ pub fn saved_choice(manager: &Manager) -> bool {
 pub fn open(app: &AppHandle, about: &AskAbout) {
     let label = format!("{LABEL_PREFIX}{}", about.download_id);
     if let Some(window) = app.get_webview_window(&label) {
+        let _ = window.show();
         let _ = window.set_focus();
         return;
     }
     let built = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()))
         .title("Download file")
         .inner_size(560.0, 360.0)
+        .background_color(Color(0x0b, 0x0e, 0x1a, 0xff))
+        .visible(false)
+        // The window draws its own title bar.
+        .decorations(false)
         .resizable(false)
         .maximizable(false)
         .always_on_top(true)
         .center()
         .focused(true)
+        .on_page_load(|window, payload| {
+            if payload.event() == PageLoadEvent::Finished {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        })
         .build();
     if let Err(e) = built {
         eprintln!("OmniDm: can't open the download window: {e}");

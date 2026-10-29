@@ -6,10 +6,15 @@
 use omnidm_ipc::protocol::MediaInfo;
 use omnidm_service::manager::Manager;
 use omnidm_service::media::{AudioChoice, Choice, QualityChoice};
+use tauri::webview::PageLoadEvent;
+use tauri::window::Color;
 use tauri::{AppHandle, Emitter, Manager as _, WebviewUrl, WebviewWindowBuilder};
 
 /// The window of the video with this offer number.
 const LABEL_PREFIX: &str = "media-";
+
+/// The page's background (`#0b0e1a` in index.css), shown before the page has drawn.
+const BACKGROUND: Color = Color(0x0b, 0x0e, 0x1a, 0xff);
 
 /// Opens the window for a video the extension found.
 pub fn open(app: &AppHandle, offer: i64) {
@@ -20,12 +25,23 @@ pub fn open(app: &AppHandle, offer: i64) {
     }
     let built = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()))
         .title("Download video")
-        .inner_size(600.0, 500.0)
-        .min_inner_size(480.0, 420.0)
+        // The same size as the download window.
+        .inner_size(560.0, 360.0)
+        // The window draws its own title bar.
+        .decorations(false)
+        .resizable(false)
         .maximizable(false)
         .always_on_top(true)
         .center()
-        .focused(true)
+        // Hidden, on the page's dark colour, until the page has loaded: no white flash.
+        .background_color(BACKGROUND)
+        .visible(false)
+        .on_page_load(|window, payload| {
+            if payload.event() == PageLoadEvent::Finished {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        })
         .build();
     if let Err(e) = built {
         eprintln!("OmniDm: can't open the video window: {e}");

@@ -52,6 +52,7 @@ const RESULT_TIMEOUT_MS = 10_000;
 export async function handleCreated(
   item: DownloadItemLike,
   deps: CaptureDeps,
+  onSettled?: () => void,
 ): Promise<CaptureOutcome> {
   const size = sizeOf(item);
   const decision = decide(
@@ -64,12 +65,16 @@ export async function handleCreated(
     },
     await deps.settings(),
   );
-  if (!decision.capture) return 'left';
+  if (!decision.capture) {
+    onSettled?.();
+    return 'left';
+  }
 
   try {
     await deps.downloads.pause(item.id);
   } catch {
     // Already finished or failed: nothing left to take over.
+    onSettled?.();
     return 'left';
   }
 
@@ -83,11 +88,14 @@ export async function handleCreated(
   }
 
   if (!accepted) {
+    onSettled?.();
     await deps.downloads.resume(item.id).catch(() => undefined);
     return 'resumed';
   }
-  // OmniDm has it: the browser's copy goes, and so does its entry in the list.
+  // OmniDm has it: cancel first, finish filename determination while the ID still exists,
+  // then erase the browser's entry.
   await deps.downloads.cancel(item.id).catch(() => undefined);
+  onSettled?.();
   await deps.downloads.erase({ id: item.id }).catch(() => undefined);
   return 'captured';
 }

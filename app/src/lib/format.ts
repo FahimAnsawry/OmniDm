@@ -9,7 +9,7 @@ export function formatBytes(bytes: number): string {
     unit += 1;
   }
   if (unit === 0) return `${value} B`;
-  return `${value < 10 ? value.toFixed(2) : value < 100 ? value.toFixed(1) : value.toFixed(0)} ${units[unit]}`;
+  return `${value < 100 ? value.toFixed(1) : value.toFixed(0)} ${units[unit]}`;
 }
 
 export function formatSpeed(bytesPerSecond: number): string {
@@ -26,6 +26,16 @@ export function formatDuration(seconds: number): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 48) return minutes % 60 ? `${hours} h ${minutes % 60} min` : `${hours} h`;
   return `${Math.round(hours / 24)} days`;
+}
+
+/** "42 s", "5 min 12 s", "1 h 5 min": exact, for one download's window. */
+export function formatElapsed(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "";
+  const s = Math.round(seconds);
+  if (s < 60) return `${s} s`;
+  if (s < 3600) return s % 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s / 60} min`;
+  const minutes = Math.round(s / 60);
+  return minutes % 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes / 60} h`;
 }
 
 const timeOnly = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });

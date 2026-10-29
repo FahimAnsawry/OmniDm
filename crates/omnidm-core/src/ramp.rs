@@ -32,7 +32,7 @@ pub struct RampPolicy {
 impl Default for RampPolicy {
     fn default() -> Self {
         Self {
-            max_connections: 8,
+            max_connections: HARD_CAP,
             mode: RampMode::Doubling,
             cooldown: Duration::from_secs(2),
         }

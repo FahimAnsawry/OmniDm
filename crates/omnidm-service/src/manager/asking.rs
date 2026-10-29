@@ -61,7 +61,10 @@ impl Manager {
                     .settings
                     .save_dir
                     .map(PathBuf::from)
-                    .unwrap_or_else(|| self.downloads_folder());
+                    .unwrap_or_else(|| {
+                        self.downloads_folder()
+                            .join(sanitize_file_name(&category.settings.name))
+                    });
                 (Some(category.settings.name), folder)
             }
             None => (None, self.downloads_folder()),
@@ -199,6 +202,9 @@ impl Manager {
             ));
         }
         std::fs::create_dir_all(&folder).map_err(|e| format!("can't create the folder: {e}"))?;
+        let auto_category = self
+            .category_for(&name, None, &pending.request.url)
+            .map(|c| c.id);
         let id = DownloadId(pending.id);
         let mut store = self.inner.store.lock().unwrap();
         let category = match answer.category.as_deref().map(str::trim) {
@@ -206,7 +212,7 @@ impl Manager {
                 let all = store.list_categories().map_err(|e| e.to_string())?;
                 Some(categories::find(&all, wanted)?.id)
             }
-            _ => None,
+            _ => auto_category,
         };
         let queue = match &answer.queue {
             Some(name) => Some(queues::find(&store, name)?.id),

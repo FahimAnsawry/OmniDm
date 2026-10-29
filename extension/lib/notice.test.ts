@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { describe, expect, it } from 'vitest';
-import { badgeFor, badgeForTab, shouldOpenSetup } from './notice';
+import { badgeFor, shouldOpenSetup } from './notice';
 
 describe('badgeFor', () => {
   it('marks a missing app in red', () => {
@@ -17,10 +17,19 @@ describe('badgeFor', () => {
     expect(badge.color).toBe('#d97706');
   });
 
-  it('shows nothing while connected or connecting', () => {
+  it('shows nothing while connected or connecting when enabled', () => {
     for (const status of ['connected', 'connecting', 'disconnected'] as const) {
       expect(badgeFor(status).text).toBe('');
-      expect(badgeFor(status).title).toBe('OmniDm');
+      expect(badgeFor(status).title).toBe('OmniDm (click to disable)');
+    }
+  });
+
+  it('shows OFF when disabled regardless of connection status', () => {
+    for (const status of ['connected', 'notInstalled', 'notRunning'] as const) {
+      const badge = badgeFor(status, false);
+      expect(badge.text).toBe('OFF');
+      expect(badge.color).toBe('#6b7280');
+      expect(badge.title).toBe('OmniDm is disabled (click to enable)');
     }
   });
 });
@@ -35,18 +44,5 @@ describe('shouldOpenSetup', () => {
     expect(shouldOpenSetup('install', 'notRunning')).toBe(false);
     expect(shouldOpenSetup('update', 'notInstalled')).toBe(false);
     expect(shouldOpenSetup('chrome_update', 'notInstalled')).toBe(false);
-  });
-});
-
-describe('badgeForTab', () => {
-  it('counts videos unless the app is missing', () => {
-    expect(badgeForTab('connected', 0).text).toBe('');
-    expect(badgeForTab('connected', 2)).toMatchObject({
-      text: '2',
-      title: 'OmniDm found 2 videos on this page',
-    });
-    expect(badgeForTab('disconnected', 1).title).toBe('OmniDm found a video on this page');
-    expect(badgeForTab('notInstalled', 3).text).toBe('!');
-    expect(badgeForTab('notRunning', 3).color).toBe('#d97706');
   });
 });
