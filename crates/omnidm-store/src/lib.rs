@@ -12,14 +12,17 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use omnidm_core::engine::Method;
 use omnidm_core::{Segment, SegmentId};
-use rusqlite::{Connection, OptionalExtension, Row, params};
+pub use omnidm_queue::PostAction;
+pub use omnidm_queue::category::CategoryRule;
+pub use omnidm_queue::schedule::Schedule;
+use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
 pub mod checkpoint;
 #[cfg(windows)]
 mod dpapi;
 
 /// Schema version this build creates and understands.
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// Each entry upgrades the schema from version `index` to `index + 1`.
 const MIGRATIONS: [&str; SCHEMA_VERSION as usize] = [
@@ -71,10 +74,77 @@ const MIGRATIONS: [&str; SCHEMA_VERSION as usize] = [
         cookies     BLOB    NOT NULL
     );
 "#,
+    // 4: queues and categories. The Main queue always exists; the default categories are
+    // added by `seed_categories`.
+    r#"
+    CREATE TABLE queues (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        name           TEXT    NOT NULL UNIQUE,
+        max_concurrent INTEGER NOT NULL,
+        schedule_json  TEXT    NOT NULL DEFAULT '{}',
+        on_complete    TEXT    NOT NULL DEFAULT 'none'
+    );
+    INSERT INTO queues (id, name, max_concurrent) VALUES (1, 'Main', 3);
+    CREATE TABLE queue_items (
+        download_id INTEGER PRIMARY KEY REFERENCES downloads(id) ON DELETE CASCADE,
+        queue_id    INTEGER NOT NULL REFERENCES queues(id) ON DELETE CASCADE,
+        position    INTEGER NOT NULL
+    );
+    CREATE INDEX queue_items_order ON queue_items (queue_id, position);
+    CREATE TABLE categories (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        name      TEXT    NOT NULL UNIQUE,
+        position  INTEGER NOT NULL,
+        rule_json TEXT    NOT NULL,
+        save_dir  TEXT
+    );
+    ALTER TABLE downloads ADD COLUMN category_id INTEGER
+        REFERENCES categories(id) ON DELETE SET NULL;
+"#,
 ];
 
 const DOWNLOAD_COLUMNS: &str = "id, url, save_dir, file_name, referrer, user_agent, final_url, \
-     total_size, etag, last_modified, resumable, status, error, created_at, completed_at,      method, body, final_method";
+     total_size, etag, last_modified, resumable, status, error, created_at, completed_at, \
+     method, body, final_method, category_id";
+
+/// The queue every database starts with. It can't be deleted.
+pub const MAIN_QUEUE: QueueId = QueueId(1);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct QueueId(pub i64);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct CategoryId(pub i64);
+
+/// A queue's settings: what the user can change.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueueSettings {
+    pub name: String,
+    /// Downloads of this queue running at once.
+    pub max_concurrent: u32,
+    pub schedule: Schedule,
+    pub on_complete: PostAction,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueueRecord {
+    pub id: QueueId,
+    pub settings: QueueSettings,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CategorySettings {
+    pub name: String,
+    pub rule: CategoryRule,
+    /// Where its downloads are saved; `None` means the general downloads folder.
+    pub save_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CategoryRecord {
+    pub id: CategoryId,
+    pub settings: CategorySettings,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DownloadId(pub i64);
@@ -149,6 +219,7 @@ pub struct DownloadRecord {
     /// Unix seconds.
     pub created_at: i64,
     pub completed_at: Option<i64>,
+    pub category: Option<CategoryId>,
 }
 
 #[derive(Debug)]
@@ -165,6 +236,8 @@ pub enum StoreError {
     OutOfRange(u64),
     /// Not available on this operating system.
     Unsupported(&'static str),
+    /// The change is never allowed, e.g. deleting the Main queue.
+    NotAllowed(&'static str),
 }
 
 impl fmt::Display for StoreError {
@@ -178,6 +251,7 @@ impl fmt::Display for StoreError {
             Self::Corrupt(what) => write!(f, "database contains invalid data: {what}"),
             Self::OutOfRange(v) => write!(f, "value {v} is too large to store"),
             Self::Unsupported(what) => write!(f, "{what} is not supported on this system"),
+            Self::NotAllowed(why) => f.write_str(why),
         }
     }
 }
@@ -434,6 +508,202 @@ impl Store {
         Ok(())
     }
 
+    /// Every queue, Main first, then in the order they were made.
+    pub fn list_queues(&self) -> Result<Vec<QueueRecord>> {
+        let sql = format!("SELECT {QUEUE_COLUMNS} FROM queues ORDER BY id");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map([], read_queue)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows.into_iter().collect()
+    }
+
+    pub fn get_queue(&self, id: QueueId) -> Result<Option<QueueRecord>> {
+        let sql = format!("SELECT {QUEUE_COLUMNS} FROM queues WHERE id = ?1");
+        self.conn
+            .query_row(&sql, [id.0], read_queue)
+            .optional()?
+            .transpose()
+    }
+
+    pub fn insert_queue(&mut self, settings: &QueueSettings) -> Result<QueueId> {
+        self.conn.execute(
+            "INSERT INTO queues (name, max_concurrent, schedule_json, on_complete)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![
+                settings.name,
+                settings.max_concurrent,
+                schedule_json(&settings.schedule)?,
+                settings.on_complete.as_str(),
+            ],
+        )?;
+        Ok(QueueId(self.conn.last_insert_rowid()))
+    }
+
+    pub fn update_queue(&mut self, id: QueueId, settings: &QueueSettings) -> Result<()> {
+        self.conn.execute(
+            "UPDATE queues SET name = ?2, max_concurrent = ?3, schedule_json = ?4,
+                               on_complete = ?5
+             WHERE id = ?1",
+            params![
+                id.0,
+                settings.name,
+                settings.max_concurrent,
+                schedule_json(&settings.schedule)?,
+                settings.on_complete.as_str(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Deletes a queue. Its downloads stay, in no queue.
+    pub fn delete_queue(&mut self, id: QueueId) -> Result<()> {
+        if id == MAIN_QUEUE {
+            return Err(StoreError::NotAllowed("the Main queue can't be deleted"));
+        }
+        self.conn
+            .execute("DELETE FROM queues WHERE id = ?1", [id.0])?;
+        Ok(())
+    }
+
+    /// The downloads of a queue, in order.
+    pub fn queue_downloads(&self, id: QueueId) -> Result<Vec<DownloadId>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT download_id FROM queue_items WHERE queue_id = ?1 ORDER BY position",
+        )?;
+        let ids = stmt
+            .query_map([id.0], |r| Ok(DownloadId(r.get(0)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(ids)
+    }
+
+    /// The queue a download is in, if any.
+    pub fn queue_of(&self, download: DownloadId) -> Result<Option<QueueId>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT queue_id FROM queue_items WHERE download_id = ?1",
+                [download.0],
+                |r| Ok(QueueId(r.get(0)?)),
+            )
+            .optional()?)
+    }
+
+    /// Puts a download at the end of `queue`, taking it out of any other queue. A download
+    /// already in `queue` keeps its place.
+    pub fn add_to_queue(&mut self, queue: QueueId, download: DownloadId) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO queue_items (download_id, queue_id, position)
+             VALUES (?1, ?2,
+                     (SELECT COALESCE(MAX(position), -1) + 1 FROM queue_items WHERE queue_id = ?2))
+             ON CONFLICT (download_id) DO UPDATE
+                 SET queue_id = excluded.queue_id, position = excluded.position
+                 WHERE queue_id <> excluded.queue_id",
+            params![download.0, queue.0],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_from_queue(&mut self, download: DownloadId) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM queue_items WHERE download_id = ?1",
+            [download.0],
+        )?;
+        Ok(())
+    }
+
+    /// Moves a download to `index` in its queue (past the end means last). `false` if it
+    /// isn't in a queue.
+    pub fn move_in_queue(&mut self, download: DownloadId, index: usize) -> Result<bool> {
+        let Some(queue) = self.queue_of(download)? else {
+            return Ok(false);
+        };
+        let mut order = self.queue_downloads(queue)?;
+        order.retain(|&id| id != download);
+        order.insert(index.min(order.len()), download);
+        let tx = self.conn.transaction()?;
+        renumber(
+            &tx,
+            "UPDATE queue_items SET position = ?2 WHERE download_id = ?1",
+            order.iter().map(|id| id.0),
+        )?;
+        tx.commit()?;
+        Ok(true)
+    }
+
+    /// Every category, in the order they are tried.
+    pub fn list_categories(&self) -> Result<Vec<CategoryRecord>> {
+        let sql = format!("SELECT {CATEGORY_COLUMNS} FROM categories ORDER BY position, id");
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map([], read_category)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        rows.into_iter().collect()
+    }
+
+    pub fn get_category(&self, id: CategoryId) -> Result<Option<CategoryRecord>> {
+        let sql = format!("SELECT {CATEGORY_COLUMNS} FROM categories WHERE id = ?1");
+        self.conn
+            .query_row(&sql, [id.0], read_category)
+            .optional()?
+            .transpose()
+    }
+
+    /// Adds a category, tried after the existing ones.
+    pub fn insert_category(&mut self, settings: &CategorySettings) -> Result<CategoryId> {
+        insert_category(&self.conn, settings)
+    }
+
+    pub fn update_category(&mut self, id: CategoryId, settings: &CategorySettings) -> Result<()> {
+        self.conn.execute(
+            "UPDATE categories SET name = ?2, rule_json = ?3, save_dir = ?4 WHERE id = ?1",
+            params![
+                id.0,
+                settings.name,
+                rule_json(&settings.rule)?,
+                settings.save_dir
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Deletes a category. Its downloads stay, with no category.
+    pub fn delete_category(&mut self, id: CategoryId) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM categories WHERE id = ?1", [id.0])?;
+        Ok(())
+    }
+
+    /// Moves a category to `index` in the order they are tried (past the end means last).
+    pub fn move_category(&mut self, id: CategoryId, index: usize) -> Result<()> {
+        let mut order: Vec<CategoryId> = self.list_categories()?.iter().map(|c| c.id).collect();
+        if !order.contains(&id) {
+            return Ok(());
+        }
+        order.retain(|&c| c != id);
+        order.insert(index.min(order.len()), id);
+        let tx = self.conn.transaction()?;
+        renumber(
+            &tx,
+            "UPDATE categories SET position = ?2 WHERE id = ?1",
+            order.iter().map(|c| c.0),
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn set_download_category(
+        &mut self,
+        download: DownloadId,
+        category: Option<CategoryId>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE downloads SET category_id = ?2 WHERE id = ?1",
+            params![download.0, category.map(|c| c.0)],
+        )?;
+        Ok(())
+    }
+
     fn with_headers(&self, mut record: DownloadRecord) -> Result<DownloadRecord> {
         let mut stmt = self.conn.prepare_cached(
             "SELECT name, value FROM download_headers WHERE download_id = ?1 ORDER BY position",
@@ -481,6 +751,9 @@ fn migrate(conn: &mut Connection) -> Result<()> {
     for version in found..SCHEMA_VERSION {
         let tx = conn.transaction()?;
         tx.execute_batch(MIGRATIONS[version as usize])?;
+        if version + 1 == 4 {
+            seed_categories(&tx)?;
+        }
         tx.pragma_update(None, "user_version", version + 1)?;
         tx.commit()?;
     }
@@ -495,6 +768,7 @@ fn read_download(r: &Row<'_>) -> rusqlite::Result<Result<DownloadRecord>> {
     let method: String = r.get(15)?;
     let body: Option<Vec<u8>> = r.get(16)?;
     let final_method: Option<String> = r.get(17)?;
+    let category: Option<i64> = r.get(18)?;
     let id = DownloadId(r.get(0)?);
     let record = (|| {
         Ok(DownloadRecord {
@@ -517,9 +791,96 @@ fn read_download(r: &Row<'_>) -> rusqlite::Result<Result<DownloadRecord>> {
             error: r.get(12)?,
             created_at: r.get(13)?,
             completed_at: r.get(14)?,
+            category: category.map(CategoryId),
         })
     })();
     Ok(record)
+}
+
+const QUEUE_COLUMNS: &str = "id, name, max_concurrent, schedule_json, on_complete";
+const CATEGORY_COLUMNS: &str = "id, name, rule_json, save_dir";
+
+/// Reads one `QUEUE_COLUMNS` row (outer result SQLite's, inner ours, as `read_download`).
+fn read_queue(r: &Row<'_>) -> rusqlite::Result<Result<QueueRecord>> {
+    let id = QueueId(r.get(0)?);
+    let name: String = r.get(1)?;
+    let max_concurrent: i64 = r.get(2)?;
+    let schedule: String = r.get(3)?;
+    let on_complete: String = r.get(4)?;
+    Ok((|| {
+        Ok(QueueRecord {
+            id,
+            settings: QueueSettings {
+                name,
+                max_concurrent: u32::try_from(max_concurrent)
+                    .map_err(|_| StoreError::Corrupt(format!("queue limit {max_concurrent}")))?,
+                schedule: serde_json::from_str(&schedule)
+                    .map_err(|e| StoreError::Corrupt(format!("queue schedule: {e}")))?,
+                on_complete: PostAction::from_name(&on_complete).ok_or_else(|| {
+                    StoreError::Corrupt(format!("unknown queue action {on_complete:?}"))
+                })?,
+            },
+        })
+    })())
+}
+
+fn read_category(r: &Row<'_>) -> rusqlite::Result<Result<CategoryRecord>> {
+    let id = CategoryId(r.get(0)?);
+    let name: String = r.get(1)?;
+    let rule: String = r.get(2)?;
+    let save_dir: Option<String> = r.get(3)?;
+    Ok(serde_json::from_str(&rule)
+        .map_err(|e| StoreError::Corrupt(format!("category rule: {e}")))
+        .map(|rule| CategoryRecord {
+            id,
+            settings: CategorySettings {
+                name,
+                rule,
+                save_dir,
+            },
+        }))
+}
+
+fn schedule_json(schedule: &Schedule) -> Result<String> {
+    serde_json::to_string(schedule).map_err(|e| StoreError::Corrupt(e.to_string()))
+}
+
+fn rule_json(rule: &CategoryRule) -> Result<String> {
+    serde_json::to_string(rule).map_err(|e| StoreError::Corrupt(e.to_string()))
+}
+
+fn insert_category(conn: &Connection, settings: &CategorySettings) -> Result<CategoryId> {
+    conn.execute(
+        "INSERT INTO categories (name, position, rule_json, save_dir)
+         VALUES (?1, (SELECT COALESCE(MAX(position), -1) + 1 FROM categories), ?2, ?3)",
+        params![settings.name, rule_json(&settings.rule)?, settings.save_dir],
+    )?;
+    Ok(CategoryId(conn.last_insert_rowid()))
+}
+
+/// Adds the default categories, saving to the general downloads folder until the user
+/// gives them folders of their own.
+fn seed_categories(tx: &Transaction<'_>) -> Result<()> {
+    for (name, rule) in omnidm_queue::category::default_categories() {
+        insert_category(
+            tx,
+            &CategorySettings {
+                name: name.into(),
+                rule,
+                save_dir: None,
+            },
+        )?;
+    }
+    Ok(())
+}
+
+/// Runs `update` (`?1` = id, `?2` = position) for each id, numbering them from 0.
+fn renumber(tx: &Transaction<'_>, update: &str, ids: impl Iterator<Item = i64>) -> Result<()> {
+    let mut stmt = tx.prepare(update)?;
+    for (position, id) in ids.enumerate() {
+        stmt.execute(params![id, position as i64])?;
+    }
+    Ok(())
 }
 
 fn status_name(status: Status) -> &'static str {

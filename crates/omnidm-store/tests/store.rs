@@ -429,6 +429,9 @@ fn a_version_1_database_is_upgraded_and_keeps_its_downloads() {
         store.load_segments(d.id).unwrap(),
         vec![seg(0, 0, 999, 400)]
     );
+    assert_eq!(d.category, None);
+    assert_eq!(store.list_queues().unwrap()[0].settings.name, "Main");
+    assert!(!store.list_categories().unwrap().is_empty());
     let version: u32 = rusqlite::Connection::open(&path)
         .unwrap()
         .pragma_query_value(None, "user_version", |r| r.get(0))

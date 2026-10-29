@@ -549,6 +549,10 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 - [ ] Queues with concurrency and order. Scheduler with days/times and wake timers.
 - [ ] Post-queue actions with a 60 s cancellable countdown. Keep-awake.
 - [ ] Category rules (extension, MIME, host → folder).
+- Step 1 done (2026-10-29): the rules and storage.
+  - `omnidm-queue`: schedules (once, or a time on chosen weekdays, plus an optional stop time) in the PC's time zone through `jiff`. A time skipped by a daylight-saving jump fires right after it; a repeated time fires once. Post-queue actions; category matching by extension, MIME type (`video/*`) or site, first match wins.
+  - Schema version 4: `queues` (starts with "Main", 3 at a time, which can't be deleted), `queue_items` (a download is in one queue at most), `categories`, `downloads.category_id`. A category's rule is stored as one JSON column instead of the three columns in §7.
+  - The default categories (Compressed, Documents, Music, Pictures, Programs, Video) have no folder of their own, so downloads keep going to the downloads folder until the user gives a category a folder.
 - **Done when:** a scheduled queue starts from sleep at the set time, runs 3 at a time, and puts the PC to sleep afterwards.
 
 ### M5: Desktop UI
