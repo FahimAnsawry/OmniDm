@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // The "Install OmniDm" notice (plan §9.3): a badge on the toolbar icon while the app
-// can't be found, and a setup page once, right after the extension is installed.
+// can't be found, and a setup page once, right after the extension is installed. Otherwise
+// the badge counts the videos found on the page.
 
 import type { LinkStatus } from './native';
 
@@ -36,6 +37,18 @@ export function badgeFor(status: LinkStatus): Badge {
     default:
       return NORMAL;
   }
+}
+
+/** The badge on one tab: the notice while the app can't be found, else how many videos
+ * on the page can be downloaded. */
+export function badgeForTab(status: LinkStatus, videos: number): Badge {
+  const notice = badgeFor(status);
+  if (notice.text || videos === 0) return notice;
+  return {
+    text: String(videos),
+    color: '#0284c7',
+    title: videos === 1 ? 'OmniDm found a video on this page' : `OmniDm found ${videos} videos on this page`,
+  };
 }
 
 /**

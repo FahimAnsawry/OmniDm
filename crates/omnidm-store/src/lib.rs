@@ -22,7 +22,7 @@ pub mod checkpoint;
 mod dpapi;
 
 /// Schema version this build creates and understands.
-pub const SCHEMA_VERSION: u32 = 6;
+pub const SCHEMA_VERSION: u32 = 7;
 
 /// Each entry upgrades the schema from version `index` to `index + 1`.
 const MIGRATIONS: [&str; SCHEMA_VERSION as usize] = [
@@ -111,11 +111,15 @@ const MIGRATIONS: [&str; SCHEMA_VERSION as usize] = [
     ALTER TABLE downloads ADD COLUMN content_type TEXT;
     ALTER TABLE downloads ADD COLUMN redirects_json TEXT;
 "#,
+    r#"
+    ALTER TABLE downloads ADD COLUMN media_json TEXT;
+    ALTER TABLE downloads ADD COLUMN media_saved INTEGER NOT NULL DEFAULT 0;
+"#,
 ];
 
 const DOWNLOAD_COLUMNS: &str = "id, url, save_dir, file_name, referrer, user_agent, final_url, \
      total_size, etag, last_modified, resumable, status, error, created_at, completed_at, \
-     method, body, final_method, category_id, content_type, redirects_json";
+     method, body, final_method, category_id, content_type, redirects_json, media_json,      media_saved";
 
 /// The queue every database starts with. It can't be deleted.
 pub const MAIN_QUEUE: QueueId = QueueId(1);
@@ -238,6 +242,11 @@ pub struct DownloadRecord {
     pub content_type: Option<String>,
     /// From the last probe: the redirects followed to reach the file.
     pub redirects: Vec<(u16, String)>,
+    /// For a video stream: which quality and sound were chosen, as the service wrote it.
+    /// `None` for an ordinary file.
+    pub media: Option<String>,
+    /// For a video stream: bytes of its pieces saved so far.
+    pub media_saved: u64,
 }
 
 #[derive(Debug)]
@@ -453,6 +462,29 @@ impl Store {
         self.conn.execute(
             "UPDATE downloads SET file_name = ?2 WHERE id = ?1",
             params![id.0, file_name],
+        )?;
+        Ok(())
+    }
+
+    /// Marks a download as a video stream, with what was chosen of it.
+    pub fn set_media(&mut self, id: DownloadId, media: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE downloads SET media_json = ?2 WHERE id = ?1",
+            params![id.0, media],
+        )?;
+        Ok(())
+    }
+
+    /// A video stream's progress: bytes saved, and the expected total when it can be told.
+    pub fn set_media_progress(
+        &mut self,
+        id: DownloadId,
+        saved: u64,
+        total: Option<u64>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE downloads SET media_saved = ?2, total_size = ?3 WHERE id = ?1",
+            params![id.0, to_i64(saved)?, total.map(to_i64).transpose()?],
         )?;
         Ok(())
     }
@@ -830,6 +862,7 @@ fn read_download(r: &Row<'_>) -> rusqlite::Result<Result<DownloadRecord>> {
     let final_method: Option<String> = r.get(17)?;
     let category: Option<i64> = r.get(18)?;
     let redirects: Option<String> = r.get(20)?;
+    let media_saved: i64 = r.get(22)?;
     let id = DownloadId(r.get(0)?);
     let record = (|| {
         Ok(DownloadRecord {
@@ -859,6 +892,8 @@ fn read_download(r: &Row<'_>) -> rusqlite::Result<Result<DownloadRecord>> {
                     .map_err(|e| StoreError::Corrupt(format!("redirects: {e}")))?,
                 None => Vec::new(),
             },
+            media: r.get(21)?,
+            media_saved: to_u64(media_saved)?,
         })
     })();
     Ok(record)

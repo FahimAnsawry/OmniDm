@@ -496,7 +496,11 @@ async fn first_response(
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(600);
 
 /// The server's `Retry-After` if it gave one, otherwise jittered exponential back-off.
-fn retry_delay(config: &EngineConfig, attempt: u32, retry_after: Option<Duration>) -> Duration {
+pub(crate) fn retry_delay(
+    config: &EngineConfig,
+    attempt: u32,
+    retry_after: Option<Duration>,
+) -> Duration {
     let retry = config.retry;
     retry_after.map_or_else(
         || backoff_delay(attempt, retry.base_delay, retry.max_delay, fastrand::f64()),
@@ -505,7 +509,7 @@ fn retry_delay(config: &EngineConfig, attempt: u32, retry_after: Option<Duration
 }
 
 /// Sleeps for `delay`; returns `true` if `cancel` fired meanwhile.
-async fn wait(cancel: &CancellationToken, delay: Duration) -> bool {
+pub(crate) async fn wait(cancel: &CancellationToken, delay: Duration) -> bool {
     tokio::select! {
         _ = cancel.cancelled() => true,
         _ = tokio::time::sleep(delay) => false,
@@ -1310,7 +1314,7 @@ async fn duplicate(
 }
 
 #[derive(Debug)]
-enum SendError {
+pub(crate) enum SendError {
     Network(reqwest::Error),
     /// More than [`MAX_REDIRECTS`] hops, usually a loop; retrying won't help.
     TooManyRedirects,
@@ -1328,7 +1332,7 @@ impl fmt::Display for SendError {
 /// Sends a request to `url`, following redirects by hand. Captured headers the engine
 /// controls are left out, and credentials are only sent to the request's own origin.
 /// Returns the response, the method its request was sent with, and the redirects followed.
-async fn send(
+pub(crate) async fn send(
     client: &reqwest::Client,
     request: &Request,
     url: &str,
@@ -1434,7 +1438,7 @@ fn validator(info: &RemoteInfo) -> Option<String> {
         .or_else(|| info.last_modified.clone())
 }
 
-fn retry_after(headers: &HeaderMap) -> Option<Duration> {
+pub(crate) fn retry_after(headers: &HeaderMap) -> Option<Duration> {
     header_text(headers, header::RETRY_AFTER)
         .and_then(|value| parse_retry_after(&value, SystemTime::now()))
 }
@@ -1448,7 +1452,7 @@ fn decode_header_bytes(bytes: &[u8]) -> String {
     }
 }
 
-fn header_text(headers: &HeaderMap, name: header::HeaderName) -> Option<String> {
+pub(crate) fn header_text(headers: &HeaderMap, name: header::HeaderName) -> Option<String> {
     headers
         .get(name)
         .and_then(|v| v.to_str().ok())

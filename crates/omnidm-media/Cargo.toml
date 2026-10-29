@@ -8,3 +8,11 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+aes = "0.9.3"
+cbc = "0.2.1"
+dash-mpd-core = { version = "0.1.0", default-features = false, features = ["log"] }
+m3u8-rs = "6.0.1"
+url = "2.5.8"
+
+[dev-dependencies]
+cbc = { version = "0.2.1", features = ["alloc"] }

@@ -9,9 +9,9 @@ use omnidm_core::{RampMode, RampPolicy, SplitPolicy};
 use omnidm_ipc::frame::{read_frame_async, write_frame_async};
 use omnidm_ipc::protocol::{
     AddRequest, BrowserCookie, Capture, CaptureResult, CookiesResponse, DownloadRef, Envelope,
-    FinishStatus, Hello, Message, PROTOCOL_VERSION,
+    FinishStatus, Hello, MediaFound, MediaQualityPick, Message, PROTOCOL_VERSION,
 };
-use omnidm_service::manager::{Manager, ManagerConfig};
+use omnidm_service::manager::{Manager, ManagerConfig, Update};
 use omnidm_service::server::handle_connection;
 use omnidm_testserver::{FileSpec, TestServer};
 use tokio::io::{DuplexStream, ReadHalf, WriteHalf};
@@ -411,4 +411,151 @@ async fn show_asks_the_app_to_open_its_window() {
 
     assert_eq!(client.reply_to(&id).await.message, Message::Ack);
     assert_eq!(shown.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_video_found_by_the_extension_waits_for_its_quality_window() {
+    let env = env().await;
+    let piece = FileSpec::new(8 * KIB).seed(7).require_cookie("session=abc");
+    env.server.set_file("/v/p0.ts", piece.clone());
+    env.server.set_text(
+        "/v/index.m3u8",
+        "application/vnd.apple.mpegurl",
+        "#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXTINF:4,\np0.ts\n#EXT-X-ENDLIST\n",
+    );
+    let mut updates = env.manager.subscribe();
+    let mut client = Client::connect(&env.manager);
+    let id = client
+        .send(Message::Media(MediaFound {
+            kind: "hls".into(),
+            url: env.server.url("/v/index.m3u8"),
+            page_url: Some(env.server.url("/watch")),
+            title: Some("Found it".into()),
+            headers: vec![],
+            cookies: vec![session("abc")],
+            private: false,
+            quality: None,
+        }))
+        .await;
+    assert!(matches!(client.reply_to(&id).await.message, Message::Ack));
+    let offer = loop {
+        if let Ok(Update::MediaOffer { offer }) = updates.recv().await {
+            break offer;
+        }
+    };
+    assert!(
+        env.manager.list().is_empty(),
+        "nothing is added before the user chooses"
+    );
+    assert_eq!(
+        env.manager.offer_quality(offer),
+        None,
+        "nothing picked on the page"
+    );
+    assert_eq!(
+        env.manager.offer_url(offer),
+        Some(env.server.url("/v/index.m3u8"))
+    );
+
+    let info = env.manager.look_at_offer(offer).await.unwrap();
+    assert_eq!(info.title, "Found it");
+    let download = env
+        .manager
+        .accept_offer(
+            offer,
+            info.title.clone(),
+            env.downloads.path().to_path_buf(),
+            Default::default(),
+            None,
+        )
+        .await
+        .unwrap();
+    let done = loop {
+        if let Ok(Update::Finished(done)) = updates.recv().await
+            && done.download_id == download
+        {
+            break done;
+        }
+    };
+    assert_eq!(done.status, FinishStatus::Completed, "{done:?}");
+    // The page's cookies went along: the piece needs them.
+    let saved = std::fs::read(env.downloads.path().join("Found it.ts")).unwrap();
+    assert_eq!(saved, piece.bytes(0, 8 * KIB as usize));
+    assert!(
+        env.manager.look_at_offer(offer).await.is_err(),
+        "taken once"
+    );
+
+    // A bad link is refused at once.
+    let id = client
+        .send(Message::Media(MediaFound {
+            kind: "hls".into(),
+            url: "file:///C:/x.m3u8".into(),
+            page_url: None,
+            title: None,
+            headers: vec![],
+            cookies: vec![],
+            private: false,
+            quality: None,
+        }))
+        .await;
+    assert!(matches!(
+        client.reply_to(&id).await.message,
+        Message::Error(_)
+    ));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_menu_on_a_video_lists_its_qualities_and_keeps_the_pick() {
+    let env = env().await;
+    env.server.set_text(
+        "/m/master.m3u8",
+        "application/vnd.apple.mpegurl",
+        "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\nlow.m3u8\n\
+         #EXT-X-STREAM-INF:BANDWIDTH=3000000,RESOLUTION=1280x720\nhigh.m3u8\n",
+    );
+    let found = |quality| MediaFound {
+        kind: "hls".into(),
+        url: env.server.url("/m/master.m3u8"),
+        page_url: None,
+        title: Some("Clip".into()),
+        headers: vec![],
+        cookies: vec![],
+        private: false,
+        quality,
+    };
+    let mut updates = env.manager.subscribe();
+    let mut client = Client::connect(&env.manager);
+
+    let id = client.send(Message::MediaLook(found(None))).await;
+    let Message::MediaInfo(info) = client.reply_to(&id).await.message else {
+        panic!("expected the video's qualities");
+    };
+    let heights: Vec<_> = info.qualities.iter().map(|q| q.height).collect();
+    assert_eq!(heights, [Some(720), Some(360)]);
+
+    let picked = MediaQualityPick {
+        height: Some(360),
+        bandwidth: 800_000,
+    };
+    let id = client.send(Message::Media(found(Some(picked)))).await;
+    assert!(matches!(client.reply_to(&id).await.message, Message::Ack));
+    let offer = loop {
+        if let Ok(Update::MediaOffer { offer }) = updates.recv().await {
+            break offer;
+        }
+    };
+    let quality = env.manager.offer_quality(offer).unwrap();
+    assert_eq!((quality.height, quality.bandwidth), (Some(360), 800_000));
+
+    let id = client
+        .send(Message::MediaLook(MediaFound {
+            url: env.server.url("/m/gone.m3u8"),
+            ..found(None)
+        }))
+        .await;
+    assert!(matches!(
+        client.reply_to(&id).await.message,
+        Message::Error(_)
+    ));
 }

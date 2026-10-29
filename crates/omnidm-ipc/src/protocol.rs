@@ -60,6 +60,14 @@ pub enum Message {
     /// Several links at once ("Download all links").
     CaptureMany(CaptureMany),
     CaptureManyResult(CaptureManyResult),
+    /// A video found playing on a page; the app asks which quality to download (with the
+    /// one already picked on the page, if any). Answered with `ack` once the question is on
+    /// screen, or `error`.
+    Media(MediaFound),
+    /// What a video found on a page offers, for the menu on the video. Answered with
+    /// `mediaInfo` or `error`.
+    MediaLook(MediaFound),
+    MediaInfo(MediaInfo),
     /// The app asks for fresh cookies, to resume a download after a restart.
     CookiesRequest(CookiesRequest),
     CookiesResponse(CookiesResponse),
@@ -722,4 +730,104 @@ pub enum AfterQueueOutcome {
     Done,
     Cancelled,
     Failed,
+}
+
+/// What a video stream offers, for choosing its quality.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct MediaInfo {
+    /// `hls` or `dash`.
+    pub kind: String,
+    /// A name for the file, without an extension: the page's title or the playlist's name.
+    pub title: String,
+    /// Length in seconds, when it can be told.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+    /// Best first.
+    pub qualities: Vec<MediaQuality>,
+    /// Separate sound tracks.
+    pub audio: Vec<MediaAudio>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct MediaQuality {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+    /// Bits per second; 0 when unknown.
+    #[ts(type = "number")]
+    pub bandwidth: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_rate: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codecs: Option<String>,
+    /// The sound tracks it plays with, as places in [`MediaInfo::audio`]; empty when its
+    /// sound is part of it.
+    pub audio: Vec<u32>,
+    /// The one of them used unless another is chosen.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_audio: Option<u32>,
+    /// Estimated bytes, with its default sound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number")]
+    pub size: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct MediaAudio {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// Bits per second, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number")]
+    pub bandwidth: Option<u64>,
+}
+
+/// A video stream the extension found on a page (`media`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct MediaFound {
+    /// `hls` or `dash`.
+    pub kind: String,
+    /// Its playlist (`.m3u8`) or manifest (`.mpd`).
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_url: Option<String>,
+    /// The page's title, for the file name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// The headers the page sent for the playlist.
+    #[serde(default)]
+    #[ts(optional = false)]
+    pub headers: Vec<Header>,
+    #[serde(default)]
+    #[ts(optional = false)]
+    pub cookies: Vec<BrowserCookie>,
+    /// Found in a private window.
+    #[serde(default)]
+    #[ts(optional = false)]
+    pub private: bool,
+    /// The quality picked on the page, to start the question with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality: Option<MediaQualityPick>,
+}
+
+/// A quality, told by its picture height and bandwidth (they survive the playlist being
+/// read again).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct MediaQualityPick {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+    #[ts(type = "number")]
+    pub bandwidth: u64,
 }

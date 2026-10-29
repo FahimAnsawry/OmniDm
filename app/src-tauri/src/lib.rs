@@ -6,6 +6,7 @@
 mod capture;
 mod clipboard;
 mod details;
+mod media;
 mod notify;
 mod settings;
 
@@ -15,11 +16,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use omnidm_core::engine::EngineConfig;
-use omnidm_ipc::protocol::{AddRequest, CategorySummary, DownloadSummary, Progress, QueueSummary};
+use omnidm_ipc::protocol::{
+    AddRequest, CategorySummary, DownloadSummary, MediaInfo, Progress, QueueSummary,
+};
 #[cfg(windows)]
 use omnidm_queue::power::SystemPower;
 use omnidm_queue::power::{NoPower, Power};
-use omnidm_service::manager::{Manager, ManagerConfig, Update};
+use omnidm_service::manager::{Manager, ManagerConfig, MediaAdd, Update};
+use omnidm_service::media::{AudioChoice, Choice, QualityChoice};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager as _, WindowEvent};
@@ -114,6 +118,8 @@ pub fn run() {
                 let _ = window.hide();
             } else if let Some(id) = capture::download_of(window.label()) {
                 capture::closed_unanswered(window.app_handle(), id);
+            } else if let Some(offer) = media::offer_of(window.label()) {
+                window.app_handle().state::<Manager>().forget_offer(offer);
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -131,6 +137,8 @@ pub fn run() {
             show_in_folder,
             cancel_after_queue,
             add_download,
+            look_at_media,
+            add_media,
             suggest_place,
             capture::capture_prompt,
             capture::answer_capture,
@@ -143,7 +151,9 @@ pub fn run() {
             settings::delete_category,
             settings::move_category,
             details::open_details,
-            details::download_details
+            details::download_details,
+            media::media_offer,
+            media::accept_media
         ])
         .run(tauri::generate_context!())
         .expect("error while running OmniDm");
@@ -258,6 +268,57 @@ async fn add_download(
     Ok(id)
 }
 
+/// What a video link offers, for the quality window.
+#[tauri::command]
+async fn look_at_media(
+    manager: tauri::State<'_, Manager>,
+    url: String,
+) -> Result<MediaInfo, String> {
+    manager
+        .look_at_media(MediaAdd {
+            url,
+            ..MediaAdd::default()
+        })
+        .await
+}
+
+/// A video the quality window chose.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NewMedia {
+    url: String,
+    /// The file's name, without an extension.
+    title: String,
+    folder: String,
+    quality: Option<QualityChoice>,
+    audio: Option<AudioChoice>,
+    /// Put in this queue instead of starting now.
+    queue: Option<String>,
+}
+
+#[tauri::command]
+async fn add_media(
+    app: AppHandle,
+    manager: tauri::State<'_, Manager>,
+    media: NewMedia,
+) -> Result<i64, String> {
+    let id = manager
+        .add_media(MediaAdd {
+            url: media.url,
+            title: Some(media.title),
+            dir: Some(PathBuf::from(media.folder.trim())),
+            choice: Choice {
+                quality: media.quality,
+                audio: media.audio,
+            },
+            queue: media.queue,
+            ..MediaAdd::default()
+        })
+        .await?;
+    let _ = app.emit("downloads-changed", ());
+    Ok(id)
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Place {
@@ -355,6 +416,7 @@ fn forward_updates(app: AppHandle, manager: &Manager) {
                     capture::open(&app, &about);
                     let _ = app.emit("downloads-changed", ());
                 }
+                Ok(Update::MediaOffer { offer }) => media::open(&app, offer),
                 Ok(Update::QueueFinished { queue_id, tried }) => {
                     let finished = serde_json::json!({ "queueId": queue_id, "tried": tried });
                     let _ = app.emit("queue-finished", finished);

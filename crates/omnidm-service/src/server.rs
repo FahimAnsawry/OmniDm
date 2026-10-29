@@ -91,6 +91,18 @@ where
                     let _ = out.send(reply.reply_to(id));
                 });
             }
+            Message::Media(found) => answer(&out, id, manager.offer_media(found).map(drop)),
+            Message::MediaLook(found) => {
+                // Reading the playlist takes a while; keep reading meanwhile.
+                let (manager, out) = (manager.clone(), out.clone());
+                tokio::spawn(async move {
+                    let reply = match manager.look_at_found(found).await {
+                        Ok(info) => Envelope::new(new_id(), Message::MediaInfo(info)),
+                        Err(e) => error("invalid", &e),
+                    };
+                    let _ = out.send(reply.reply_to(id));
+                });
+            }
             Message::CaptureMany(many) => {
                 reply(Message::CaptureManyResult(CaptureManyResult {
                     results: manager.capture_many(many.items),

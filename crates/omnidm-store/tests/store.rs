@@ -478,3 +478,22 @@ fn a_download_can_change_folder_and_name() {
     assert_eq!(d.save_dir, r"D:\Elsewhere");
     assert_eq!(d.file_name.as_deref(), Some("b.zip"));
 }
+
+#[test]
+fn video_streams_keep_their_choice_and_progress() {
+    let mut store = Store::open_in_memory().unwrap();
+    let id = store
+        .insert_download(&new_download("https://example.com/master.m3u8"))
+        .unwrap();
+    let plain = store.get_download(id).unwrap().unwrap();
+    assert_eq!((plain.media, plain.media_saved), (None, 0));
+
+    store.set_media(id, r#"{"height":720}"#).unwrap();
+    store.set_media_progress(id, 5_000, Some(80_000)).unwrap();
+    let d = store.get_download(id).unwrap().unwrap();
+    assert_eq!(d.media.as_deref(), Some(r#"{"height":720}"#));
+    assert_eq!(d.media_saved, 5_000);
+    assert_eq!(d.total_size, Some(80_000));
+    store.set_media_progress(id, 6_000, None).unwrap();
+    assert_eq!(store.get_download(id).unwrap().unwrap().total_size, None);
+}

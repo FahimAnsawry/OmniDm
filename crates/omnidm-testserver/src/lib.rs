@@ -264,7 +264,7 @@ struct Shared {
     /// Path → (status, target, `Set-Cookie` value).
     redirects: HashMap<String, (u16, String, Option<String>)>,
     /// Path → (content type, body), served as is.
-    texts: HashMap<String, (String, String)>,
+    texts: HashMap<String, (String, Vec<u8>)>,
     log: Vec<RequestRecord>,
 }
 
@@ -339,11 +339,16 @@ impl TestServer {
 
     /// Serves `body` at `path` with `content_type` (for small files such as PAC scripts).
     pub fn set_text(&self, path: &str, content_type: &str, body: &str) {
+        self.set_bytes(path, content_type, body.as_bytes().to_vec());
+    }
+
+    /// Serves `body` at `path` with `content_type`, as is: no ranges or faults.
+    pub fn set_bytes(&self, path: &str, content_type: &str, body: Vec<u8>) {
         self.shared
             .lock()
             .unwrap()
             .texts
-            .insert(path.into(), (content_type.into(), body.into()));
+            .insert(path.into(), (content_type.into(), body));
     }
 
     /// Redirects `from` to `to` (a path or absolute URL) with a 3xx `status`.

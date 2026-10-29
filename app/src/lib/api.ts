@@ -9,6 +9,7 @@ import type { CategoryEdit } from "../../../protocol/ts/CategoryEdit";
 import type { CategorySummary } from "../../../protocol/ts/CategorySummary";
 import type { DownloadDetails } from "../../../protocol/ts/DownloadDetails";
 import type { DownloadSummary } from "../../../protocol/ts/DownloadSummary";
+import type { MediaInfo } from "../../../protocol/ts/MediaInfo";
 import type { QueueSummary } from "../../../protocol/ts/QueueSummary";
 
 export type NewDownload = {
@@ -18,6 +19,22 @@ export type NewDownload = {
   folder: string;
   connections?: number;
   /** Put in this queue instead of starting now. */
+  queue?: string;
+};
+
+/** A quality, by its picture height and bandwidth. */
+export type QualityPick = { height: number | null; bandwidth: number };
+
+/** A video (HLS or DASH) to download, as the quality window chose it. */
+export type NewMedia = {
+  url: string;
+  /** The file's name, without an extension. */
+  title: string;
+  folder: string;
+  /** Absent: the best. */
+  quality?: QualityPick;
+  /** Absent: the one the video suggests. */
+  audio?: { name: string; language: string | null };
   queue?: string;
 };
 
@@ -51,6 +68,12 @@ export const api = {
   showInFolder: (id: number) => invoke<void>("show_in_folder", { id }),
   cancelAfterQueue: () => invoke<boolean>("cancel_after_queue"),
   addDownload: (download: NewDownload) => invoke<number>("add_download", { download }),
+  lookAtMedia: (url: string) => invoke<MediaInfo>("look_at_media", { url }),
+  addMedia: (media: NewMedia) => invoke<number>("add_media", { media }),
+  mediaOffer: (offer: number) =>
+    invoke<{ url: string; info: MediaInfo; quality: QualityPick | null }>("media_offer", { offer }),
+  acceptMedia: (accepted: Omit<NewMedia, "url"> & { offer: number }) =>
+    invoke<number>("accept_media", { accepted }),
   suggestPlace: (url: string, fileName?: string) =>
     invoke<Place>("suggest_place", { url, fileName: fileName || null }),
   capturePrompt: (id: number) => invoke<AskAbout | null>("capture_prompt", { id }),

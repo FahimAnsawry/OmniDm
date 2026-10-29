@@ -10,6 +10,7 @@ use tokio::sync::broadcast::error::RecvError;
 
 use super::{Manager, Update};
 use crate::job::PART_SUFFIX;
+use crate::media::WORK_SUFFIX;
 
 /// How long deleting waits for a running download to stop.
 const STOP_WAIT: Duration = Duration::from_secs(10);
@@ -61,7 +62,8 @@ impl Manager {
     }
 
     /// Where a download is on disk: the saved file once it completed, else the unfinished
-    /// part file, or just the folder before the file has a name.
+    /// part file (a video stream's work folder), or just the folder before the file has a
+    /// name.
     pub fn file_of(&self, id: i64) -> Result<PathBuf, String> {
         let record = self
             .inner
@@ -74,6 +76,7 @@ impl Manager {
         let dir = PathBuf::from(&record.save_dir);
         Ok(match &record.file_name {
             Some(name) if record.status == Status::Completed => dir.join(name),
+            Some(name) if record.media.is_some() => dir.join(format!("{name}{WORK_SUFFIX}")),
             Some(name) => dir.join(format!("{name}{PART_SUFFIX}")),
             None => dir,
         })
@@ -110,11 +113,19 @@ impl Manager {
             .delete_download(DownloadId(id))
             .map_err(|e| e.to_string())?;
         self.forget_details(id);
-        let unfinished = file
+        let name = file
             .file_name()
-            .is_some_and(|n| n.to_string_lossy().ends_with(PART_SUFFIX));
-        if (delete_file || unfinished) && file.is_file() {
-            match std::fs::remove_file(&file) {
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let removed = if name.ends_with(WORK_SUFFIX) && file.is_dir() {
+            Some(std::fs::remove_dir_all(&file))
+        } else if (delete_file || name.ends_with(PART_SUFFIX)) && file.is_file() {
+            Some(std::fs::remove_file(&file))
+        } else {
+            None
+        };
+        if let Some(removed) = removed {
+            match removed {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(e) => {

@@ -13,6 +13,8 @@ export interface CaptureSettings {
   excludedSites: string[];
   /** Capture downloads from private windows too. */
   capturePrivate: boolean;
+  /** Put a Download button on videos OmniDm found on a page. */
+  videoButton: boolean;
 }
 
 export const DEFAULT_SETTINGS: CaptureSettings = {
@@ -21,4 +23,5 @@ export const DEFAULT_SETTINGS: CaptureSettings = {
   fileTypes: [],
   excludedSites: [],
   capturePrivate: false,
+  videoButton: true,
 };

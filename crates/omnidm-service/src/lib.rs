@@ -5,5 +5,7 @@
 pub mod after_queue;
 pub mod job;
 pub mod manager;
+pub mod media;
 pub mod scheduler;
 pub mod server;
+pub mod ytdlp;

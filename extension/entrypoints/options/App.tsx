@@ -112,6 +112,16 @@ function App() {
           />
         </label>
 
+        <label className="flex items-center justify-between gap-3">
+          <span>Show a Download button on videos OmniDm finds</span>
+          <input
+            type="checkbox"
+            className="size-4 accent-sky-600"
+            checked={settings.videoButton}
+            onChange={(e) => setSettings({ ...settings, videoButton: e.target.checked })}
+          />
+        </label>
+
         <div className="flex items-center gap-3">
           <button
             type="submit"

@@ -26,7 +26,7 @@
 - ~~Global and per-download speed limits~~ (dropped 2026-10-28, see §5.7)
 - Queues, scheduler, categories, post-queue actions
 - Browser extension: download capture with safe handoff, context menus, media detection, popup, options
-- HLS and DASH downloads with FFmpeg remuxing
+- HLS and DASH downloads (FFmpeg remuxing postponed; see M6 step 3)
 - Desktop UI, tray icon, notifications, CLI
 - Per-user installer, auto-update, extension store listings
 
@@ -619,9 +619,51 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
   - "Get OmniDm" points to the GitHub releases page, which has no installer until M7.
 
 ### M6: Media
-- [ ] HLS and DASH parsers, variant picker, AES-128, FFmpeg adapter.
-- [ ] Extension media list wired to the app.
-- **Done when:** HLS (clear and AES-128) and DASH test fixtures download and remux to a playable MP4. Protected streams are refused with a clear message.
+- [x] HLS and DASH parsers, variant picker, AES-128. (FFmpeg adapter postponed, see step 3.)
+- [x] Extension media list wired to the app. (Live browser test still to do.)
+- **Done when:** HLS (clear and AES-128) and DASH test fixtures download and join into playable files (`.ts`/`.mp4`, plus a separate sound file when the stream has one). Protected streams are refused with a clear message.
+- **Steps:** 1. reading HLS and DASH; 2. downloading the pieces; 3. FFmpeg joining (postponed); 4. quality picker in the app; 5. the extension's media list.
+- Step 1 (2026-10-29): `omnidm-media` reads both kinds into one model, with no network code.
+  - A `Manifest` lists qualities (best first) and separate sound tracks. Each one is either ready to download (a `Track`: an optional header piece, then pieces with byte ranges and AES-128 keys) or, for an HLS master playlist, a media playlist still to fetch.
+  - HLS: I-frame and backup variants are skipped. Keys and maps carry over until the next tag, and the IV defaults to the sequence number. A byte range without an offset follows the previous one. A header piece means fragmented MP4. A header that changes partway through is refused for now.
+  - DASH: uses `dash-mpd-core`, the parser-only half of `dash-mpd` (0.21 now downloads by itself and pulls in about 30 crates). It handles `SegmentTemplate` with a timeline (including `r="-1"`) or `@duration`, settings inherited from the levels above, `$Number%05d$`-style widths, `SegmentList`, and one-file `SegmentBase` (downloaded whole, so no `sidx` reading). Several periods are refused for now.
+  - Refused with a clear message: DRM (`SAMPLE-AES`, non-`identity` key formats, any `ContentProtection`, named Widevine/PlayReady/FairPlay where possible), live streams, non-web addresses, and more than 200,000 pieces.
+  - m3u8-rs 6.0.1 drops `EXT-X-KEY:METHOD=NONE` (its IV check is the wrong way round); OmniDm reads it from the unknown tags instead.
+  - Subtitles aren't offered yet.
+- Step 2 (2026-10-29): downloading the pieces (`Manager::add_media`; nothing calls it yet, that is steps 4–5).
+  - The playlist is read before anything is added, so DRM, live streams and dead links are refused with their reason and leave nothing in the list.
+  - `omnidm_core::fetch` gets one small file or byte range over a single connection with the engine's rules: redirects by hand, cookies, captured headers, retries, the stall timeout, and the HTML-page check (off for playlists). It continues from bytes already held, and slices the range out itself when a server ignores `Range`. Playlists and keys are capped at 64 MB in memory.
+  - Work folder `<name>.omnidm-media/` next to the file, one folder per track: `<n>.part` while a piece downloads, `<n>.piece` once it is complete (and unlocked). A `track-id` fingerprint (piece addresses without their query, plus ranges, FNV-1a) starts a track over if the playlist changed. Pausing keeps complete pieces and half-done ones; resuming reads the playlist again (fresh tokens), skips complete pieces and continues the rest.
+  - Pieces download `max_connections` at a time; each AES-128 key is fetched once. 401/403/410 on a piece or key pauses with "link expired", keeping the pieces.
+  - The chosen quality (height + bandwidth) and sound track (name + language) are saved as `media_json` (schema 7, with `media_saved` for progress). A resume takes the same ones, or the closest if the playlist changed.
+  - Each track's pieces are joined in order into one file. Until FFmpeg (step 3): one track is saved as `<title>.ts|mp4|webm`, and a separate sound track as `<title> (sound).m4a|webm`.
+  - The file name comes from the page title, else the playlist's name, or its folder's when that is generic (`master`, `index`, `manifest`…).
+- Step 3 (2026-10-29): **postponed by the user**: no FFmpeg for now, maybe later. Videos stay as step 2 saves them: `.ts` when the pieces are TS (plays in VLC and most players), and two files when picture and sound come separately (`<title>.mp4` without sound, `<title> (sound).m4a`). If FFmpeg is added later, it plugs in where `save_tracks` moves the joined tracks: remux TS to MP4 and merge picture + sound with `ffmpeg -c copy`.
+- Step 4 (2026-10-29): the quality window in **Add download**.
+  - A link whose path ends in `.m3u8`, `.m3u` or `.mpd` is read as a video once typing stops (`look_at_media`): qualities best first (resolution, bitrate, estimated size), the sound track when there is a choice, and the length. For an HLS master playlist the best quality's playlist is also read, for the length.
+  - Sizes are bandwidth × length; DASH adds the default sound's bandwidth (HLS already counts it). DRM, live streams and dead links show their reason, and the Download buttons stay off.
+  - The file name defaults to the playlist's name (or its folder's when generic); the folder follows the Video category. "Later" puts the video in a queue (`MediaAdd::queue`). The Connections box is hidden for videos: pieces download `max_connections` at a time.
+  - A note says when picture and sound will be saved as two files (no FFmpeg).
+  - `MediaPicker` is its own component, for step 5 to reuse. Checked against real playlists: Mux's Big Buck Bunny (HLS, 5 qualities), Apple's bipbop sample (HLS, 8 qualities, separate sound groups), Akamai's bbb_30fps (DASH, 10 qualities up to 4K, 159 pieces each).
+- Step 5 (2026-10-29): the extension finds videos on pages; no new permissions.
+  - `webRequest.onHeadersReceived` (xmlhttprequest, media, other) picks out HLS/DASH playlists by content type, or else by a `.m3u8`/`.mpd` name. Only the page's own requests count; the extension's reads have no tab.
+  - Each new playlist is read once (a `fetch` with the browser's cookies, 10 s, at most 5 MB) to tell: an HLS master's qualities and sound playlists (hidden as parts of it, whichever arrives first), DRM (`SAMPLE-AES`, non-`identity` key formats, session keys, `ContentProtection`), live (no `ENDLIST` and not VOD; `type="dynamic"`), and things that aren't video playlists (an internet-radio `.m3u`), which are dropped. A playlist that can't be read is listed as ready; the app says if it can't be downloaded.
+  - Per tab, at most 50, cleared when the tab loads another page or closes, and kept in `storage.session` because the background can be stopped.
+  - The badge counts the page's downloadable videos (per tab, sky blue); the red/amber "!" notice wins while the app can't be found.
+  - The popup lists "Videos on this page": a name (the playlist's, or its folder's when generic), HLS/DASH, or why it can't be downloaded (checking, protected, live), and a Download button.
+  - Download sends `media` (kind, URL, page, tab title, cached request headers, cookies, private) to the app, answered `ack` once the window is up. The service holds it as an offer (at most 32; `Update::MediaOffer`) and the app opens a `media-<offer>` window: the quality picker plus name, folder, Cancel / Later (queue) / Download now, which then shows the download's progress, like the capture prompt. Closing the window drops the offer.
+- Step 5b (2026-10-29, asked for by the user): a Download button on the video itself.
+  - The background puts `video-button.js` (an unlisted script) into the frame that asked for the playlist (`webRequest` gives its `frameId`), only once the playlist was read as downloadable, and only with the "Show a Download button on videos" setting on (default on). So nothing runs on pages without a video, and no new permissions or manifest content scripts are needed.
+  - The button (a download icon) shows over the top-right corner of a video at least 240×135 while the pointer is on it, and stays 1.5 s after it leaves. It follows scrolling and resizing, and moves into a full-screen player (not a bare full-screen `<video>`). It is drawn in a closed shadow root; text from the network is only set as text. Its click doesn't reach the page's player.
+  - Clicking it opens a menu of the qualities (name and estimated size) of the videos found in that frame (else the whole tab's), grouped by name when there are several. The app reads them (`mediaLook` → `mediaInfo`, with the page's cookies), and the background keeps the answer for 2 minutes.
+  - Picking a quality sends `media` with `quality` (height + bandwidth): the app's video window opens showing that quality as one line (not the list again), for the name, folder and Download now. The button is a round icon only ("Download with OmniDm" as its tooltip and label).
+- Step 6 (2026-10-29, asked for by the user): YouTube, through yt-dlp. The user won't publish the extension in the Chrome Web Store, whose policy forbids YouTube downloading; YouTube's own terms restrict it too.
+  - YouTube plays no standard playlist, and scrambles its format addresses in ways that change often, so OmniDm doesn't unscramble them itself: `omnidm_service::ytdlp` asks yt-dlp (`--dump-single-json --no-playlist --ignore-config`, no console window, 90 s limit, the page's cookies as a `Cookie` header) and downloads the formats with its own engine.
+  - yt-dlp is fetched on first use from its latest GitHub release into `<data>/tools/`, checked against the release's `SHA2-256SUMS` (a mismatch is deleted), and kept. When reading a video fails, `yt-dlp -U` runs once and the video is read again. `Manager::set_ytdlp` points elsewhere (tests, or a later "my own copy" setting).
+  - Formats become a manifest (`StreamKind::YouTube`, with the video's own title): plain `https` formats without DRM; per height and frame rate the best picture (a format with its sound first, then MP4, then bitrate); per language the best sound (M4A first, the original first). Live and upcoming videos are refused.
+  - Each format with a known size is cut into 10 MB byte-range pieces downloaded in parallel (YouTube serves big single requests slowly). Tracks gained an `id` (the format number, part of the resume fingerprint, since addresses change) and their own request `headers` (yt-dlp names them per format). Resuming asks yt-dlp again, since YouTube's addresses expire after a few hours.
+  - Above 360p, picture and sound come apart: saved as two files until FFmpeg is added (step 3).
+  - The extension knows YouTube watch pages, shorts and `youtu.be` links by address (YouTube changes videos without loading a page), and embedded players (`/embed/` frames, once loaded). They get the button and are listed in the popup. Add download accepts YouTube links too.
 
 ### M7: Release
 - [ ] Tauri bundler: **NSIS per-user installer** (no admin; it writes the HKCU native-messaging keys). `omnidm-host.exe` shipped through `bundle.externalBin`, and the uninstaller removes the keys.
@@ -654,8 +696,9 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 
 | Decision | Options | Needed by |
 |---|---|---|
-| FFmpeg distribution | Bundle a build (+~80 MB; GPL or LGPL builds are both compatible with OmniDm's GPL-3.0) / download on first use / user-provided path | M6 |
+| FFmpeg distribution | Bundle a build (+~80 MB; GPL or LGPL builds are both compatible with OmniDm's GPL-3.0) / download on first use / user-provided path. **Postponed 2026-10-29:** no FFmpeg for now; decide if it is added later | Later |
 | Persist cookies for resume | **Decided 2026-10-28: DPAPI-encrypted** (current user) in the database until the download completes | ✅ |
+| Chrome Web Store | **Decided 2026-10-29: not published there** (the user's choice; it allows OmniDm's YouTube support) | ✅ |
 | Minimum browser versions | **Decided 2026-10-28: Chrome/Edge 120+, Firefox 128+** (the ESR line) | ✅ |
 | MSI in addition to NSIS | Only if enterprise deployment matters | M7 |
 | Optional crash reports | None (proposed) or opt-in | M7 |

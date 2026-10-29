@@ -9,6 +9,7 @@ mod bulk;
 mod categories;
 mod details;
 mod limits;
+mod media;
 mod queues;
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -35,6 +36,8 @@ use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
 use crate::job::{Job, JobError, JobOutcome, run_job};
+
+pub use media::MediaAdd;
 
 /// Name of the database file inside the data folder.
 pub const DATABASE_FILE: &str = "omnidm.db";
@@ -71,6 +74,11 @@ pub enum Update {
     AfterQueue(AfterQueue),
     /// A captured download is held until the user says what to do with it.
     Ask(AskAbout),
+    /// The extension found a video; its quality window should open (see
+    /// [`Manager::offer_media`]).
+    MediaOffer {
+        offer: i64,
+    },
 }
 
 /// Where fresh cookies come from when a download resumes (the connected browser).
@@ -106,6 +114,10 @@ struct Inner {
     limits: Mutex<limits::Limits>,
     /// Each download's latest engine report and log (see `details`).
     details: Mutex<HashMap<i64, details::Live>>,
+    /// Videos found by the extension, waiting in their quality window (see `media`).
+    offers: Mutex<media::Offers>,
+    /// Reads YouTube videos (see `crate::ytdlp`).
+    ytdlp: Mutex<Arc<crate::ytdlp::YtDlp>>,
 }
 
 /// Opens the app's window.
@@ -163,6 +175,8 @@ struct Pending {
     resume: Option<Resume>,
     request: Request,
     connections: Option<u32>,
+    /// For a video stream: what to download of it.
+    media: Option<crate::media::Choice>,
 }
 
 impl Manager {
@@ -180,6 +194,10 @@ impl Manager {
             .map_err(|e| StoreError::Corrupt(format!("can't create the HTTP client: {e}")))?;
         let (updates, _) = broadcast::channel(1024);
         let limits = limits::Limits::from(&config);
+        let ytdlp = crate::ytdlp::YtDlp::new(
+            config.data_dir.join("tools").join(crate::ytdlp::PROGRAM),
+            Some(crate::ytdlp::RELEASE.into()),
+        );
         Ok(Self {
             inner: Arc::new(Inner {
                 config,
@@ -195,6 +213,8 @@ impl Manager {
                 ask_first: AtomicBool::new(false),
                 limits: Mutex::new(limits),
                 details: Mutex::new(HashMap::new()),
+                offers: Mutex::new(media::Offers::default()),
+                ytdlp: Mutex::new(Arc::new(ytdlp)),
             }),
         })
     }
@@ -331,6 +351,7 @@ impl Manager {
             resume: None,
             request: prepared.request,
             connections: None,
+            media: None,
         };
         if self.inner.ask_first.load(Ordering::Relaxed) {
             self.ask(pending, &capture.url, size, resumable, category);
@@ -371,6 +392,7 @@ impl Manager {
                             resume: None,
                             request: prepared.request,
                             connections: None,
+                            media: None,
                         });
                         CaptureResult::Accepted { download_id: id }
                     }
@@ -475,6 +497,7 @@ impl Manager {
                 cookies: jar_from(&given),
             },
             connections: add.connections,
+            media: None,
         });
         Ok(id)
     }
@@ -580,6 +603,13 @@ impl Manager {
                 .save_cookies(record.id, &json);
         }
         let resume = resume_from(&record, segments).filter(|_| record.file_name.is_some());
+        let media = match &record.media {
+            Some(json) => Some(
+                serde_json::from_str(json)
+                    .map_err(|e| format!("the saved video choice can't be read: {e}"))?,
+            ),
+            None => None,
+        };
         Ok(Pending {
             id,
             dir: PathBuf::from(&record.save_dir),
@@ -594,6 +624,7 @@ impl Manager {
                 cookies: jar_from(&cookies),
             },
             connections: None,
+            media,
         })
     }
 
@@ -638,10 +669,14 @@ impl Manager {
         records
             .into_iter()
             .map(|record| {
-                let downloaded = store
-                    .load_segments(record.id)
-                    .map(|segments| segments.iter().map(|s| s.written).sum())
-                    .unwrap_or(0);
+                let downloaded = if record.media.is_some() {
+                    record.media_saved
+                } else {
+                    store
+                        .load_segments(record.id)
+                        .map(|segments| segments.iter().map(|s| s.written).sum())
+                        .unwrap_or(0)
+                };
                 let queue = store
                     .queue_of(record.id)
                     .ok()
@@ -724,6 +759,9 @@ impl Manager {
 
     /// Runs `pending` (already counted as running) on its own thread until it ends.
     fn run(&self, pending: Pending, cancel: CancellationToken) {
+        if pending.media.is_some() {
+            return self.run_media(pending, cancel);
+        }
         let mut config = self.inner.config.engine.clone();
         config.ramp.max_connections = pending
             .connections
@@ -780,22 +818,27 @@ impl Manager {
                 }
                 Err(e) => (FinishStatus::Failed, None, Some(e.to_string())),
             };
-            manager.note(
-                id,
-                match (status, &path, &error) {
-                    (FinishStatus::Completed, Some(path), _) => {
-                        format!("Completed: saved as {path}")
-                    }
-                    (FinishStatus::Completed, None, _) => "Completed".into(),
-                    (FinishStatus::Paused, _, Some(error)) => format!("Paused: {error}"),
-                    (FinishStatus::Paused, _, None) => "Paused".into(),
-                    (FinishStatus::Failed, _, error) => {
-                        format!("Failed: {}", error.as_deref().unwrap_or("unknown error"))
-                    }
-                },
-            );
-            manager.next(id, || manager.finished(id, status, path, error));
+            manager.ended(id, status, path, error);
         });
+    }
+
+    /// Logs how `id` ended, then announces it and moves on to the next download.
+    fn ended(&self, id: i64, status: FinishStatus, path: Option<String>, error: Option<String>) {
+        self.note(
+            id,
+            match (status, &path, &error) {
+                (FinishStatus::Completed, Some(path), _) => {
+                    format!("Completed: saved as {path}")
+                }
+                (FinishStatus::Completed, None, _) => "Completed".into(),
+                (FinishStatus::Paused, _, Some(error)) => format!("Paused: {error}"),
+                (FinishStatus::Paused, _, None) => "Paused".into(),
+                (FinishStatus::Failed, _, error) => {
+                    format!("Failed: {}", error.as_deref().unwrap_or("unknown error"))
+                }
+            },
+        );
+        self.next(id, || self.finished(id, status, path, error));
     }
 
     /// `id` stopped: says so with `announce`, then starts the next download of its queue,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { describe, expect, it } from 'vitest';
-import { badgeFor, shouldOpenSetup } from './notice';
+import { badgeFor, badgeForTab, shouldOpenSetup } from './notice';
 
 describe('badgeFor', () => {
   it('marks a missing app in red', () => {
@@ -35,5 +35,18 @@ describe('shouldOpenSetup', () => {
     expect(shouldOpenSetup('install', 'notRunning')).toBe(false);
     expect(shouldOpenSetup('update', 'notInstalled')).toBe(false);
     expect(shouldOpenSetup('chrome_update', 'notInstalled')).toBe(false);
+  });
+});
+
+describe('badgeForTab', () => {
+  it('counts videos unless the app is missing', () => {
+    expect(badgeForTab('connected', 0).text).toBe('');
+    expect(badgeForTab('connected', 2)).toMatchObject({
+      text: '2',
+      title: 'OmniDm found 2 videos on this page',
+    });
+    expect(badgeForTab('disconnected', 1).title).toBe('OmniDm found a video on this page');
+    expect(badgeForTab('notInstalled', 3).text).toBe('!');
+    expect(badgeForTab('notRunning', 3).color).toBe('#d97706');
   });
 });

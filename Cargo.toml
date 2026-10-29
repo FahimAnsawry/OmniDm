@@ -18,6 +18,14 @@ omnidm-queue = { path = "crates/omnidm-queue" }
 omnidm-media = { path = "crates/omnidm-media" }
 omnidm-ipc = { path = "crates/omnidm-ipc" }
 
+# Development builds keep only line numbers for OmniDm's own code (enough for backtraces)
+# and no debug info for libraries: full debug info made `target` grow past 100 GB.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 # Small, fast release binaries: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
 codegen-units = 1

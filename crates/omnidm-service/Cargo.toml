@@ -11,17 +11,22 @@ repository.workspace = true
 base64 = "0.22"
 omnidm-core = { version = "0.1.0", path = "../omnidm-core" }
 omnidm-ipc = { version = "0.1.0", path = "../omnidm-ipc" }
+omnidm-media = { version = "0.1.0", path = "../omnidm-media" }
 omnidm-net = { version = "0.1.0", path = "../omnidm-net" }
 omnidm-queue = { version = "0.1.0", path = "../omnidm-queue" }
 omnidm-store = { version = "0.1.0", path = "../omnidm-store" }
 fastrand = "2.5.0"
 jiff = "0.2.38"
 reqwest = "0.13.5"
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util"] }
+sha2 = "0.10.9"
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "process"] }
 tokio-util = "0.7.20"
 
 [dev-dependencies]
+aes = "0.9.3"
+cbc = { version = "0.2.1", features = ["alloc"] }
 base64 = "0.22"
 fastrand = "2.5.0"
 omnidm-testserver = { path = "../omnidm-testserver" }

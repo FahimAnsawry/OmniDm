@@ -3,6 +3,7 @@
 //! Download engine: segments, splitting and ramp-up, resume checks, speed limiting.
 
 pub mod engine;
+pub mod fetch;
 pub mod meter;
 pub mod ramp;
 pub mod segment;
