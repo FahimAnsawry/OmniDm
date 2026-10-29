@@ -12,4 +12,12 @@ queue?: string,
 /**
  * Its category, by name.
  */
-category?: string, };
+category?: string, 
+/**
+ * When it was added, in Unix seconds.
+ */
+addedAt: number, 
+/**
+ * When it completed, in Unix seconds.
+ */
+completedAt?: number, };

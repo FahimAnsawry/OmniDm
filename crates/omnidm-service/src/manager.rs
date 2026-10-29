@@ -4,6 +4,8 @@
 //! downloads added by the CLI, pause and resume, and a waiting line beyond `max_active`.
 //! Queues (in `queues`) run their own downloads, each with its own limit.
 
+mod asking;
+mod bulk;
 mod categories;
 mod queues;
 
@@ -11,6 +13,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -19,8 +22,8 @@ use omnidm_core::engine::{
     EngineConfig, EngineError, Event, Method, Probe, Request, Resume, probe,
 };
 use omnidm_ipc::protocol::{
-    AddRequest, AfterQueue, BrowserCookie, Capture, CaptureResult, DownloadSummary, FinishStatus,
-    Finished, Header, Progress, RejectReason,
+    AddRequest, AfterQueue, AskAbout, BrowserCookie, Capture, CaptureResult, DownloadSummary,
+    FinishStatus, Finished, Header, Progress, RejectReason,
 };
 use omnidm_net::cookies::{BrowserCookieSpec, CookieJar, Url};
 use omnidm_net::naming::{choose_file_name, sanitize_file_name};
@@ -64,6 +67,8 @@ pub enum Update {
     },
     /// An after-queue action counting down, or how it ended.
     AfterQueue(AfterQueue),
+    /// A captured download is held until the user says what to do with it.
+    Ask(AskAbout),
 }
 
 /// Where fresh cookies come from when a download resumes (the connected browser).
@@ -93,6 +98,8 @@ struct Inner {
     schedules_changed: tokio::sync::Notify,
     /// Cancels the after-queue action counting down, if one is.
     after_queue: Mutex<Option<CancellationToken>>,
+    /// Captures wait for the user's answer instead of starting at once.
+    ask_first: AtomicBool,
 }
 
 /// Opens the app's window.
@@ -104,6 +111,8 @@ struct State {
     waiting: VecDeque<Pending>,
     /// Started queues, by queue id.
     queues: HashMap<i64, QueueRun>,
+    /// Captures waiting for the user's answer, ready to start.
+    asking: HashMap<i64, asking::Held>,
 }
 
 /// One run of a started queue.
@@ -176,6 +185,7 @@ impl Manager {
                 show: Mutex::new(None),
                 schedules_changed: tokio::sync::Notify::new(),
                 after_queue: Mutex::new(None),
+                ask_first: AtomicBool::new(false),
             }),
         })
     }
@@ -305,7 +315,9 @@ impl Manager {
             Ok(id) => id,
             Err(e) => return rejected(RejectReason::NotAccepting, e.to_string()),
         };
-        self.start_now(Pending {
+        let size = first.info.total;
+        let resumable = first.info.resumable;
+        let pending = Pending {
             id,
             dir,
             file_name: Some(name),
@@ -313,7 +325,12 @@ impl Manager {
             resume: None,
             request: prepared.request,
             connections: None,
-        });
+        };
+        if self.inner.ask_first.load(Ordering::Relaxed) {
+            self.ask(pending, &capture.url, size, resumable, category);
+        } else {
+            self.start_now(pending);
+        }
         CaptureResult::Accepted { download_id: id }
     }
 
@@ -495,6 +512,9 @@ impl Manager {
         if self.is_active(id) {
             return Ok(());
         }
+        if self.is_asking(id) {
+            return Err("it is waiting for your answer in its download window".into());
+        }
         let pending = self.load(id).await?;
         self.inner
             .store
@@ -568,6 +588,15 @@ impl Manager {
 
     /// Every download, oldest first.
     pub fn list(&self) -> Vec<DownloadSummary> {
+        let asking: HashSet<i64> = self
+            .inner
+            .state
+            .lock()
+            .unwrap()
+            .asking
+            .keys()
+            .copied()
+            .collect();
         let store = self.inner.store.lock().unwrap();
         let Ok(records) = store.list_downloads() else {
             return Vec::new();
@@ -602,13 +631,19 @@ impl Manager {
                     url: record.url,
                     file_name: record.file_name,
                     save_dir: record.save_dir,
-                    status: record.status.as_str().into(),
+                    status: if asking.contains(&record.id.0) {
+                        "asking".into()
+                    } else {
+                        record.status.as_str().into()
+                    },
                     total: record.total_size,
                     downloaded,
                     error: record.error,
                     category: record
                         .category
                         .and_then(|c| category_names.get(&c).cloned()),
+                    added_at: record.created_at,
+                    completed_at: record.completed_at,
                 }
             })
             .collect()

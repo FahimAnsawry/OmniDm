@@ -1,9 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "description": "The main window and the capture prompts: pick folders; a prompt also closes itself, retitles itself to show progress and leaves the top",
+  "windows": ["main", "capture-*"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-set-title",
+    "core:window:allow-set-always-on-top",
+    "dialog:allow-open"
   ]
 }

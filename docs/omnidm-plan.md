@@ -584,6 +584,22 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 - [ ] Settings wired to the store and live-applied.
 - [ ] Site login: Basic and Digest auth, a username/password dialog on `401`, saved per site in Windows Credential Manager. The test server gets auth switches.
 - **Done when:** every engine feature is reachable from the UI. 500 downloads in the list scroll smoothly while 10 are running.
+- Steps (planned 2026-10-29): 1 main window; 2 Add download dialog, capture prompt, notifications; 3 queues and scheduler screen (with the wake-timer warning); 4 Settings (categories, autostart, clipboard monitor, live-applied); 5 Details view; 6 site login and "ignore certificate errors"; 7 the extension's "Install OmniDm" notice, then the live tests (sleep/wake, Edge).
+- Step 1 (2026-10-29): main window.
+  - Toolbar (Resume, Pause, Delete; Start/Stop queue when a queue is shown; search). Sidebar: All, Downloading, Paused, Completed, Failed, the queues (a dot when running) and the categories, each with a count. Status bar with the total speed.
+  - List: name, size, progress, speed, time left, status, added. Click a header to sort (then reverse, then back to the view's own order: newest first, or the queue's order). Only the rows in view are drawn, so 500 rows scroll smoothly (checked with 500 made-up downloads).
+  - Click, Ctrl-click, Shift-click, arrow keys, Ctrl+A, Delete, Enter. Double-click opens a completed file or resumes a stopped one. Right-click: Open, Show in folder, Resume, Pause, Copy link, Delete.
+  - Delete asks first; files stay unless "Also delete the files" is ticked. An unfinished download's part file always goes, since nothing could continue it. A running download is stopped first.
+  - Tray: Pause all (also stops started queues) and Resume all (every paused or failed download).
+  - Progress reaches the window as one event for all downloads, 5 times a second (§11.2).
+  - Found while building: a file saved as `name (1).ext` because `name.ext` was taken kept the planned name in the database, so Open or Delete would have hit the other file. The final name is now saved (a bug since M1).
+- Step 2 (2026-10-29): Add download, capture prompt, notifications.
+  - Capture prompt (on by default): the capture is still probed and accepted at once (the browser cancels its copy), then held with the server's first response kept for 60 s, and a small always-on-top window asks: file name, category (changing it changes the folder), folder with Browse, "Download now", "Later" in a chosen queue, or Cancel. Closing the window cancels. "Download all links" never asks; those were chosen in the extension.
+  - After "Download now" the prompt becomes that download's progress window (decided 2026-10-29): bar, downloaded/total, speed with connections, time left, Pause/Resume, Close (the download keeps going). Finished: Open and Show in folder; failed: the error and Retry. It stops being always-on-top, and its title shows the percentage.
+  - "Don't ask again" in the prompt, and "Ask before downloading" in the tray menu, turn it off or on. Saved in the new `settings` table (schema version 5), the start of step 4's settings.
+  - A held capture shows as "Asking you" in the list. If OmniDm closes first, it is left paused.
+  - Add download (toolbar button, Ctrl+N): link (taken from the clipboard when a link was copied), file name, connections, folder (from the link's category until the user picks one), "Download now" or "Later" in a queue. No checksum field: the engine doesn't check checksums yet.
+  - Windows notifications when a download completes or fails, unless the list window is in front. A `notify_finished` setting turns them off (its switch comes with step 4). In a development build Windows labels them "PowerShell"; the installed app (M7) shows its own name.
 
 ### M6: Media
 - [ ] HLS and DASH parsers, variant picker, AES-128, FFmpeg adapter.

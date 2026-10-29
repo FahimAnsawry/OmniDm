@@ -22,7 +22,7 @@ pub mod checkpoint;
 mod dpapi;
 
 /// Schema version this build creates and understands.
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
 /// Each entry upgrades the schema from version `index` to `index + 1`.
 const MIGRATIONS: [&str; SCHEMA_VERSION as usize] = [
@@ -100,6 +100,12 @@ const MIGRATIONS: [&str; SCHEMA_VERSION as usize] = [
     );
     ALTER TABLE downloads ADD COLUMN category_id INTEGER
         REFERENCES categories(id) ON DELETE SET NULL;
+"#,
+    r#"
+    CREATE TABLE settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
 "#,
 ];
 
@@ -422,6 +428,44 @@ impl Store {
             tx.execute("DELETE FROM secrets WHERE download_id = ?1", [id.0])?;
         }
         tx.commit()?;
+        Ok(())
+    }
+
+    /// Records the name the file was finally saved under (it may differ from the planned
+    /// one when that was taken).
+    pub fn set_file_name(&mut self, id: DownloadId, file_name: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE downloads SET file_name = ?2 WHERE id = ?1",
+            params![id.0, file_name],
+        )?;
+        Ok(())
+    }
+
+    /// Moves a download to another folder (before it has started writing there).
+    pub fn set_save_dir(&mut self, id: DownloadId, save_dir: &str) -> Result<()> {
+        self.conn.execute(
+            "UPDATE downloads SET save_dir = ?2 WHERE id = ?1",
+            params![id.0, save_dir],
+        )?;
+        Ok(())
+    }
+
+    /// A setting's saved value; `None` when it was never set.
+    pub fn setting(&self, key: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
+                r.get(0)
+            })
+            .optional()?)
+    }
+
+    pub fn set_setting(&mut self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
         Ok(())
     }
 

@@ -21,9 +21,14 @@ omnidm-core = { version = "0.1.0", path = "../../crates/omnidm-core" }
 omnidm-ipc = { version = "0.1.0", path = "../../crates/omnidm-ipc" }
 omnidm-queue = { version = "0.1.0", path = "../../crates/omnidm-queue" }
 omnidm-service = { version = "0.1.0", path = "../../crates/omnidm-service" }
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = ["tray-icon"] }
-tokio = { version = "1.54.1", features = ["sync"] }
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
+tokio = { version = "1.54.1", features = ["macros", "sync", "time"] }
 
 [features]
 # Serves the built UI from inside the program instead of the development server.

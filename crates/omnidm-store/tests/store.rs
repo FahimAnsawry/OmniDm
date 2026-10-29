@@ -438,3 +438,33 @@ fn a_version_1_database_is_upgraded_and_keeps_its_downloads() {
         .unwrap();
     assert_eq!(version, SCHEMA_VERSION);
 }
+
+#[test]
+fn settings_are_saved_and_replaced() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("omnidm.db");
+    {
+        let mut store = Store::open(&path).unwrap();
+        assert_eq!(store.setting("ask_before_download").unwrap(), None);
+        store.set_setting("ask_before_download", "true").unwrap();
+        store.set_setting("ask_before_download", "false").unwrap();
+    }
+    let store = Store::open(&path).unwrap();
+    assert_eq!(
+        store.setting("ask_before_download").unwrap().as_deref(),
+        Some("false")
+    );
+}
+
+#[test]
+fn a_download_can_change_folder_and_name() {
+    let mut store = Store::open_in_memory().unwrap();
+    let id = store
+        .insert_download(&new_download("https://example.com/a.zip"))
+        .unwrap();
+    store.set_save_dir(id, r"D:\Elsewhere").unwrap();
+    store.set_file_name(id, "b.zip").unwrap();
+    let d = store.get_download(id).unwrap().unwrap();
+    assert_eq!(d.save_dir, r"D:\Elsewhere");
+    assert_eq!(d.file_name.as_deref(), Some("b.zip"));
+}

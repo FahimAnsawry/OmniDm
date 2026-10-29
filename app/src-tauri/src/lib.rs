@@ -3,22 +3,30 @@
 //! OmniDm desktop app: runs the download service, serves the extension and the CLI over
 //! the named pipe, and shows the download list.
 
+mod capture;
+mod notify;
+
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use omnidm_core::engine::EngineConfig;
-use omnidm_ipc::protocol::DownloadSummary;
+use omnidm_ipc::protocol::{AddRequest, CategorySummary, DownloadSummary, Progress, QueueSummary};
 #[cfg(windows)]
 use omnidm_queue::power::SystemPower;
 use omnidm_queue::power::{NoPower, Power};
 use omnidm_service::manager::{Manager, ManagerConfig, Update};
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager as _, WindowEvent};
 
 /// Downloads that run at once; more wait their turn.
 const MAX_ACTIVE: usize = 3;
+
+/// Progress goes to the window at most this often (5 times a second), every download in
+/// one event, so a long list stays smooth.
+const PROGRESS_EVERY: Duration = Duration::from_millis(200);
 
 pub fn run() {
     // Started by the browser's native messaging host: no window until asked.
@@ -47,6 +55,9 @@ pub fn run() {
     };
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(move |app| {
             let manager = Manager::start(ManagerConfig {
                 data_dir: data_dir(),
@@ -59,6 +70,7 @@ pub fn run() {
             })?;
             let handle = app.handle().clone();
             manager.set_show_handler(Arc::new(move || show_window(&handle)));
+            manager.set_ask_before_download(capture::saved_choice(&manager));
             app.manage(manager.clone());
 
             #[cfg(windows)]
@@ -82,18 +94,38 @@ pub fn run() {
             }
             Ok(())
         })
-        // Closing the window keeps OmniDm (and its downloads) running in the tray.
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
+            let WindowEvent::CloseRequested { api, .. } = event else {
+                return;
+            };
+            if window.label() == "main" {
+                // Closing the window keeps OmniDm (and its downloads) running in the tray.
                 api.prevent_close();
                 let _ = window.hide();
+            } else if let Some(id) = capture::download_of(window.label()) {
+                capture::closed_unanswered(window.app_handle(), id);
             }
         })
         .invoke_handler(tauri::generate_handler![
             list_downloads,
-            pause_download,
-            resume_download,
-            cancel_after_queue
+            list_queues,
+            list_categories,
+            pause_downloads,
+            resume_downloads,
+            delete_downloads,
+            pause_all,
+            resume_all,
+            start_queue,
+            stop_queue,
+            open_file,
+            show_in_folder,
+            cancel_after_queue,
+            add_download,
+            suggest_place,
+            capture::capture_prompt,
+            capture::answer_capture,
+            capture::cancel_capture,
+            capture::set_ask_before_download
         ])
         .run(tauri::generate_context!())
         .expect("error while running OmniDm");
@@ -104,10 +136,154 @@ fn list_downloads(manager: tauri::State<'_, Manager>) -> Vec<DownloadSummary> {
     manager.list()
 }
 
+#[tauri::command]
+fn list_queues(manager: tauri::State<'_, Manager>) -> Vec<QueueSummary> {
+    manager.queues()
+}
+
+#[tauri::command]
+fn list_categories(manager: tauri::State<'_, Manager>) -> Vec<CategorySummary> {
+    manager.categories()
+}
+
 // Async, so it runs on the runtime: pausing may start a queue's next download.
 #[tauri::command]
-async fn pause_download(manager: tauri::State<'_, Manager>, id: i64) -> Result<bool, String> {
-    Ok(manager.pause(id))
+async fn pause_downloads(manager: tauri::State<'_, Manager>, ids: Vec<i64>) -> Result<(), String> {
+    for id in ids {
+        manager.pause(id);
+    }
+    Ok(())
+}
+
+/// Continues downloads; the first error is reported once all have been tried.
+#[tauri::command]
+async fn resume_downloads(manager: tauri::State<'_, Manager>, ids: Vec<i64>) -> Result<(), String> {
+    let mut first_error = None;
+    for id in ids {
+        if let Err(e) = manager.resume(id).await {
+            first_error.get_or_insert(e);
+        }
+    }
+    first_error.map_or(Ok(()), Err)
+}
+
+/// Removes downloads from the list, and their files with `delete_files`.
+#[tauri::command]
+async fn delete_downloads(
+    manager: tauri::State<'_, Manager>,
+    ids: Vec<i64>,
+    delete_files: bool,
+) -> Result<(), String> {
+    let mut first_error = None;
+    for id in ids {
+        if let Err(e) = manager.delete(id, delete_files).await {
+            first_error.get_or_insert(e);
+        }
+    }
+    first_error.map_or(Ok(()), Err)
+}
+
+#[tauri::command]
+async fn pause_all(manager: tauri::State<'_, Manager>) -> Result<(), String> {
+    manager.pause_all();
+    Ok(())
+}
+
+#[tauri::command]
+async fn resume_all(manager: tauri::State<'_, Manager>) -> Result<usize, String> {
+    Ok(manager.resume_all().await)
+}
+
+#[tauri::command]
+async fn start_queue(manager: tauri::State<'_, Manager>, name: String) -> Result<(), String> {
+    manager.start_queue(&name)
+}
+
+#[tauri::command]
+async fn stop_queue(manager: tauri::State<'_, Manager>, name: String) -> Result<(), String> {
+    manager.stop_queue(&name)
+}
+
+/// What the Add download dialog sends.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NewDownload {
+    url: String,
+    /// Blank: the server's name.
+    file_name: Option<String>,
+    folder: String,
+    connections: Option<u32>,
+    /// Put in this queue instead of starting now.
+    queue: Option<String>,
+}
+
+#[tauri::command]
+async fn add_download(
+    app: AppHandle,
+    manager: tauri::State<'_, Manager>,
+    download: NewDownload,
+) -> Result<i64, String> {
+    let id = manager.add(AddRequest {
+        url: download.url.trim().to_string(),
+        dir: download.folder.trim().to_string(),
+        file_name: download
+            .file_name
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty()),
+        connections: download.connections,
+        headers: vec![],
+        cookies: vec![],
+        data: None,
+        queue: download.queue,
+    })?;
+    let _ = app.emit("downloads-changed", ());
+    Ok(id)
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Place {
+    category: Option<String>,
+    folder: String,
+}
+
+/// The category and folder a link would get.
+#[tauri::command]
+fn suggest_place(
+    manager: tauri::State<'_, Manager>,
+    url: String,
+    file_name: Option<String>,
+) -> Place {
+    let (category, folder) = manager.suggest_place(url.trim(), file_name.as_deref());
+    Place {
+        category,
+        folder: folder.to_string_lossy().into_owned(),
+    }
+}
+
+/// Opens a completed download with its usual program.
+#[tauri::command]
+fn open_file(manager: tauri::State<'_, Manager>, id: i64) -> Result<(), String> {
+    let file = manager.file_of(id)?;
+    tauri_plugin_opener::open_path(&file, None::<&str>)
+        .map_err(|e| format!("can't open {}: {e}", file.display()))
+}
+
+/// Shows a download in Explorer: its file selected if there is one yet, else its folder.
+#[tauri::command]
+fn show_in_folder(manager: tauri::State<'_, Manager>, id: i64) -> Result<(), String> {
+    let file = manager.file_of(id)?;
+    let shown = if file.is_file() {
+        tauri_plugin_opener::reveal_item_in_dir(&file)
+    } else {
+        let dir = if file.is_dir() {
+            file.as_path()
+        } else {
+            file.parent().unwrap_or(&file)
+        };
+        tauri_plugin_opener::open_path(dir, None::<&str>)
+    };
+    shown.map_err(|e| format!("can't show {}: {e}", file.display()))
 }
 
 /// Wake timers and keep-awake for the scheduler; without them, schedules still run while
@@ -122,28 +298,44 @@ fn power() -> Arc<dyn Power> {
 }
 
 #[tauri::command]
-async fn resume_download(manager: tauri::State<'_, Manager>, id: i64) -> Result<(), String> {
-    manager.resume(id).await
-}
-
-#[tauri::command]
 fn cancel_after_queue(manager: tauri::State<'_, Manager>) -> bool {
     manager.cancel_after_queue()
 }
 
-/// Sends the service's updates to the window. An after-queue countdown also brings the
-/// window forward once, so whoever is at the PC can cancel it.
+/// Sends the service's updates to the window. Progress is gathered and sent as one
+/// `download-progress` event (a list) every [`PROGRESS_EVERY`]. An after-queue countdown
+/// also brings the window forward once, so whoever is at the PC can cancel it.
 fn forward_updates(app: AppHandle, manager: &Manager) {
     let mut updates = manager.subscribe();
     tauri::async_runtime::spawn(async move {
         let mut shown_countdown = false;
+        let mut progress: HashMap<i64, Progress> = HashMap::new();
+        let mut tick = tokio::time::interval(PROGRESS_EVERY);
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
-            match updates.recv().await {
-                Ok(Update::Progress(progress)) => {
-                    let _ = app.emit("download-progress", progress);
+            let update = tokio::select! {
+                update = updates.recv() => update,
+                _ = tick.tick() => {
+                    if !progress.is_empty() {
+                        let batch: Vec<Progress> = progress.drain().map(|(_, p)| p).collect();
+                        let _ = app.emit("download-progress", batch);
+                    }
+                    continue;
+                }
+            };
+            match update {
+                Ok(Update::Progress(p)) => {
+                    progress.insert(p.download_id, p);
                 }
                 Ok(Update::Finished(finished)) => {
+                    // Its last progress is old news now.
+                    progress.remove(&finished.download_id);
+                    notify::finished(&app, &app.state::<Manager>(), &finished);
                     let _ = app.emit("download-finished", finished);
+                }
+                Ok(Update::Ask(about)) => {
+                    capture::open(&app, &about);
+                    let _ = app.emit("downloads-changed", ());
                 }
                 Ok(Update::QueueFinished { queue_id, tried }) => {
                     let finished = serde_json::json!({ "queueId": queue_id, "tried": tried });
@@ -166,14 +358,54 @@ fn forward_updates(app: AppHandle, manager: &Manager) {
 
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Open OmniDm", true, None::<&str>)?;
+    let pause = MenuItem::with_id(app, "pause-all", "Pause all", true, None::<&str>)?;
+    let resume = MenuItem::with_id(app, "resume-all", "Resume all", true, None::<&str>)?;
+    let asks = capture::saved_choice(&app.state::<Manager>());
+    let ask = CheckMenuItem::with_id(
+        app,
+        "ask",
+        "Ask before downloading",
+        true,
+        asks,
+        None::<&str>,
+    )?;
+    app.manage(capture::AskMenuItem(ask.clone()));
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &open,
+            &PredefinedMenuItem::separator(app)?,
+            &pause,
+            &resume,
+            &PredefinedMenuItem::separator(app)?,
+            &ask,
+            &PredefinedMenuItem::separator(app)?,
+            &quit,
+        ],
+    )?;
     let mut tray = TrayIconBuilder::new()
         .tooltip("OmniDm")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "open" => show_window(app),
+            "pause-all" => {
+                let manager = app.state::<Manager>().inner().clone();
+                tauri::async_runtime::spawn(async move { manager.pause_all() });
+            }
+            "resume-all" => {
+                let manager = app.state::<Manager>().inner().clone();
+                tauri::async_runtime::spawn(async move { manager.resume_all().await });
+            }
+            "ask" => {
+                // The item ticks itself; save what it now shows.
+                let ask = app
+                    .try_state::<capture::AskMenuItem>()
+                    .and_then(|item| item.0.is_checked().ok())
+                    .unwrap_or(true);
+                let _ = capture::apply(app, ask);
+            }
             "quit" => app.exit(0),
             _ => {}
         })

@@ -150,6 +150,11 @@ pub async fn run_job(job: Job, mut progress: impl FnMut(&Event)) -> Result<JobOu
         Ok(Outcome::Completed { .. }) => {
             let target = unique_path(&dir, &file_name, Path::exists);
             std::fs::rename(&part, &target)?;
+            if let Some(saved_as) = target.file_name().and_then(|n| n.to_str())
+                && saved_as != file_name
+            {
+                store.set_file_name(id, saved_as)?;
+            }
             store.set_status(id, Status::Completed, None)?;
             Ok(JobOutcome::Completed(target))
         }

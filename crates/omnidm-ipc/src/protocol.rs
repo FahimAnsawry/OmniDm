@@ -389,6 +389,14 @@ pub struct DownloadSummary {
     /// Its category, by name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
+    /// When it was added, in Unix seconds.
+    #[serde(default)]
+    #[ts(type = "number")]
+    pub added_at: i64,
+    /// When it completed, in Unix seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number")]
+    pub completed_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -550,6 +558,46 @@ pub struct QueueSummary {
 #[ts(export)]
 pub struct QueueList {
     pub items: Vec<QueueSummary>,
+}
+
+/// A captured download waiting for the user to say what to do with it (the capture
+/// prompt).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct AskAbout {
+    #[ts(type = "number")]
+    pub download_id: i64,
+    pub url: String,
+    pub file_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number")]
+    pub size: Option<u64>,
+    /// Where it would be saved: its category's folder, or the downloads folder.
+    pub folder: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    /// The server can continue it after a pause.
+    pub resumable: bool,
+    /// The downloads folder, for a category without its own.
+    pub downloads_folder: String,
+}
+
+/// The answer to a capture prompt: download it (maybe renamed or elsewhere), now or later
+/// in a queue.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct CaptureAnswer {
+    #[ts(type = "number")]
+    pub download_id: i64,
+    pub file_name: String,
+    pub folder: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    /// Put in this queue instead of starting now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue: Option<String>,
 }
 
 /// A queue finished and its after-queue action is coming: sent every second while it

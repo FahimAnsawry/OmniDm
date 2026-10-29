@@ -60,6 +60,23 @@ impl Manager {
         url: &str,
         fallback: &Path,
     ) -> (Option<CategoryId>, PathBuf) {
+        let Some(category) = self.category_for(file_name, mime, url) else {
+            return (None, fallback.to_path_buf());
+        };
+        let dir = match &category.settings.save_dir {
+            Some(folder) if std::fs::create_dir_all(folder).is_ok() => PathBuf::from(folder),
+            _ => fallback.to_path_buf(),
+        };
+        (Some(category.id), dir)
+    }
+
+    /// The first category whose rule matches the file.
+    pub(super) fn category_for(
+        &self,
+        file_name: &str,
+        mime: Option<&str>,
+        url: &str,
+    ) -> Option<CategoryRecord> {
         let categories = self
             .inner
             .store
@@ -75,14 +92,7 @@ impl Manager {
             mime,
             host: host.as_deref(),
         };
-        let Some(category) = pick(categories.iter().map(|c| (c, &c.settings.rule)), &file) else {
-            return (None, fallback.to_path_buf());
-        };
-        let dir = match &category.settings.save_dir {
-            Some(folder) if std::fs::create_dir_all(folder).is_ok() => PathBuf::from(folder),
-            _ => fallback.to_path_buf(),
-        };
-        (Some(category.id), dir)
+        pick(categories.iter().map(|c| (c, &c.settings.rule)), &file).cloned()
     }
 }
 
@@ -97,7 +107,7 @@ pub(super) fn name_from_url(url: &str) -> String {
         .unwrap_or_default()
 }
 
-fn find(categories: &[CategoryRecord], name: &str) -> Result<CategoryRecord, String> {
+pub(super) fn find(categories: &[CategoryRecord], name: &str) -> Result<CategoryRecord, String> {
     let wanted = name.trim();
     categories
         .iter()
