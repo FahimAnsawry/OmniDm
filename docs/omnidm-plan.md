@@ -533,12 +533,16 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 - Site login (Basic/Digest auth) moved to M5 (decided 2026-10-28). Until then a `401` fails with a clear message.
 - **Done when:** the integration suite covers every row in §6 except Auth and passes. Downloading through a fixed proxy and through a PAC script works.
 
-### M3: IPC, host, extension
-- [ ] `protocol/` schema and generated types. Pipe server with the ACL and peer checks.
-- [ ] `omnidm-host` and registration (a dev script for now, the installer in M7).
-- [ ] WXT extension: capture flow (§9.3), header cache, context menus, popup, options.
-- [ ] CLI switched to talk to the running app over the pipe.
-- Firefox is built and linted but not tested live in M3 (decided 2026-10-28: Firefox isn't installed on the dev machine).
+### M3: IPC, host, extension ✅ (2026-10-28)
+- [x] Protocol types. The Rust types in `omnidm-ipc::protocol` are the source; ts-rs writes the TypeScript copies to `protocol/ts/` when the tests run, and CI fails if they are stale. This replaced the planned JSON Schema plus generator. Pipe server with the ACL and peer checks. The peer check accepts any OmniDm app found next to the host or CLI (`app_paths`), newest first, so an old build left in the folder doesn't lock out the new one.
+- [x] `omnidm-host` and registration: `omnidm-host --register` / `--unregister` for now, the installer in M7. The host uses a small tokio runtime, not plain blocking I/O, because one blocking pipe handle can't read and write at the same time.
+- [x] Download service (`omnidm-service`): captures are probed before being accepted, a waiting line (3 at a time), pause/resume. Cookies are saved encrypted with DPAPI until the download completes, and on resume the extension is asked for fresh ones first (decided 2026-10-28).
+- [x] App: tray icon (Open/Quit), closing the window hides it, `--background` starts hidden, a second start shows the running one. A minimal live download list; the full UI is M5. A plain `cargo build` of the app needs `--features custom-protocol` to show the built UI instead of the dev server.
+- [x] WXT extension: capture flow (§9.3), header cache, context menus, popup, options. Chrome/Edge 120+, Firefox 128+ (decided 2026-10-28). Not yet: partitioned (CHIPS) cookies, and the "Install OmniDm" notice when the host is missing (M5, with the capture prompt and notifications).
+- [x] CLI talks to the running app over the pipe; `--standalone` (or `OMNIDM_DATA_DIR`) keeps the old in-process mode.
+- **Result (Chrome, by hand):** plain, cookie-protected, referrer-protected and form (POST) downloads all landed in OmniDm complete. The works-once link was refused by OmniDm's probe and finished in the browser. With the host unregistered, the browser downloaded normally.
+- Not tested live: Edge (skipped, decided 2026-10-28; it uses the same Chromium code path and registry setup as Chrome) and Firefox (built and linted only; not installed on the dev machine).
+- Found while testing: IDM's "advanced browser integration" grabs downloads before any extension sees them. It has to be turned off in IDM to test OmniDm on a PC that has both.
 - **Done when:** clicking a download in Chrome, Edge and Firefox lands in OmniDm with cookies and referrer. An expiring link falls back to the browser. Uninstalling the host makes the browser download normally.
 
 ### M4: Queues, scheduler, categories
@@ -549,6 +553,7 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 
 ### M5: Desktop UI
 - [ ] Screens from §11.1, tray, notifications, autostart, clipboard monitor.
+- [ ] Capture prompt when a download is taken from the browser (with a setting to stay silent), and the extension's "Install OmniDm" notice when the host is missing (§9.3).
 - [ ] Settings wired to the store and live-applied.
 - [ ] Site login: Basic and Digest auth, a username/password dialog on `401`, saved per site in Windows Credential Manager. The test server gets auth switches.
 - **Done when:** every engine feature is reachable from the UI. 500 downloads in the list scroll smoothly while 10 are running.

@@ -17,8 +17,8 @@ jobs:
     name: Rust (fmt, clippy, test)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -35,27 +35,38 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      # The tests rewrite protocol/ts from the Rust types; any change means it was stale.
+      - name: Check generated protocol types are up to date
+        shell: bash
+        run: |
+          git add -N protocol/ts
+          git diff --exit-code -- protocol/ts
       - name: Crash test (20 random kills of a 128 MiB download)
         run: cargo test -p omnidm-cli --test crash -- --ignored --nocapture
 
   extension:
-    name: Extension (type-check, build)
+    name: Extension (type-check, test, build)
     runs-on: windows-latest
     defaults:
       run:
         working-directory: extension
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: extension/package-lock.json
       - run: npm ci
       - run: npm run compile
+      - run: npm test
       - run: npm run build
       - run: npm run build:firefox
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: omnidm-extension
-          path: extension/.output/*-mv3/
+          path: |
+            extension/.output/chrome-mv3/
+            extension/.output/firefox-mv3/
+          # `.output` starts with a dot, which the upload skips unless told otherwise.
+          include-hidden-files: true
