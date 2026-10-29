@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { browser } from 'wxt/browser';
 import type { LinkStatus } from '../../lib/native';
+import { DOWNLOAD_PAGE } from '../../lib/notice';
 import { hostMatches } from '../../lib/rules';
 import { DEFAULT_SETTINGS, type CaptureSettings } from '../../lib/settings';
 import { loadSettings, settingsItem } from '../../lib/settings-store';
@@ -75,7 +76,43 @@ function App() {
       </header>
 
       <section className="space-y-3 px-4 py-3">
-        <p className="text-neutral-600 dark:text-neutral-400">{STATUS_TEXT[status]}</p>
+        {status === 'notInstalled' ? (
+          <div
+            role="alert"
+            className="space-y-2 rounded border border-red-200 bg-red-50 p-3 text-red-950 dark:border-red-900 dark:bg-red-950 dark:text-red-100"
+          >
+            <p className="font-medium">Install the OmniDm app</p>
+            <p className="text-red-900/80 dark:text-red-100/80">
+              This extension needs the OmniDm app on this PC. Until it is installed, downloads stay in the
+              browser.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void browser.tabs.create({ url: DOWNLOAD_PAGE })}
+                className="rounded bg-red-600 px-3 py-1 font-medium text-white hover:bg-red-700"
+              >
+                Get OmniDm
+              </button>
+              <button
+                type="button"
+                onClick={() => void browser.tabs.create({ url: browser.runtime.getURL('/setup.html') })}
+                className="rounded border border-red-300 px-3 py-1 hover:bg-red-100 dark:border-red-800 dark:hover:bg-red-900"
+              >
+                How to set up
+              </button>
+              <button
+                type="button"
+                onClick={connect}
+                className="rounded border border-red-300 px-3 py-1 hover:bg-red-100 dark:border-red-800 dark:hover:bg-red-900"
+              >
+                Check again
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-neutral-600 dark:text-neutral-400">{STATUS_TEXT[status]}</p>
+        )}
         {(status === 'notRunning' || status === 'disconnected') && (
           <button
             type="button"

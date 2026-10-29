@@ -579,12 +579,12 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 
 ### M5: Desktop UI
 - [ ] Screens from §11.1, tray, notifications, autostart, clipboard monitor.
-- [ ] Capture prompt when a download is taken from the browser (with a setting to stay silent), and the extension's "Install OmniDm" notice when the host is missing (§9.3).
+- [x] Capture prompt when a download is taken from the browser (with a setting to stay silent), and the extension's "Install OmniDm" notice when the host is missing (§9.3).
 - [ ] From M4: queue and schedule screens, category editing (add, remove, reorder, rules), and a warning when "wake the PC" is chosen but Windows' "Allow wake timers" is off. The live sleep/wake test skipped in M4 runs here.
 - [ ] Settings wired to the store and live-applied.
-- [ ] Site login: Basic and Digest auth, a username/password dialog on `401`, saved per site in Windows Credential Manager. The test server gets auth switches.
+- [ ] ~~Site login: Basic and Digest auth, a username/password dialog on `401`, saved per site in Windows Credential Manager. The test server gets auth switches.~~ Dropped by the user (2026-10-29), together with "ignore certificate errors": a `401` still fails with "this site needs a username and password", and a bad certificate fails the download (the browser keeps such captures, since the probe fails first).
 - **Done when:** every engine feature is reachable from the UI. 500 downloads in the list scroll smoothly while 10 are running.
-- Steps (planned 2026-10-29): 1 main window; 2 Add download dialog, capture prompt, notifications; 3 queues and scheduler screen (with the wake-timer warning) — dropped by the user (2026-10-29): queues and schedules stay CLI-only (`omnidm queue …`), plus Start/Stop queue in the toolbar, and there is no wake-timer warning; 4 Settings (categories, autostart, clipboard monitor, live-applied); 5 Details view; 6 site login and "ignore certificate errors"; 7 the extension's "Install OmniDm" notice, then the live tests (sleep/wake, Edge).
+- Steps (planned 2026-10-29): 1 main window; 2 Add download dialog, capture prompt, notifications; 3 queues and scheduler screen (with the wake-timer warning) — dropped by the user (2026-10-29): queues and schedules stay CLI-only (`omnidm queue …`), plus Start/Stop queue in the toolbar, and there is no wake-timer warning; 4 Settings (categories, autostart, clipboard monitor, live-applied); 5 Details view; 6 site login and "ignore certificate errors" — dropped by the user (2026-10-29); 7 the extension's "Install OmniDm" notice, then the live tests (sleep/wake, Edge).
 - Step 1 (2026-10-29): main window.
   - Toolbar (Resume, Pause, Delete; Start/Stop queue when a queue is shown; search). Sidebar: All, Downloading, Paused, Completed, Failed, the queues (a dot when running) and the categories, each with a count. Status bar with the total speed.
   - List: name, size, progress, speed, time left, status, added. Click a header to sort (then reverse, then back to the view's own order: newest first, or the queue's order). Only the rows in view are drawn, so 500 rows scroll smoothly (checked with 500 made-up downloads).
@@ -612,6 +612,11 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
   - Log: what happened since OmniDm started (started, what the server sent, redirects, each new connection, retries with the reason, a busy server, a refused link, slow pieces asked for twice, cookies, paused, completed or failed). Kept in memory, at most 500 lines per download; not saved.
   - Engine: new `Event::Segments` (every piece with its state and speed, each tick) and `Event::Log`; `RemoteInfo.redirects`. Schema version 6 stores each download's redirects and `Content-Type` (the redirect chain postponed from M2).
   - A piece's speed shows once its connection has written to disk (every second by default).
+- Step 7, part 1 (2026-10-29): the extension's "Install OmniDm" notice, with no new permissions.
+  - A badge on the toolbar icon: red "!" while the app can't be found (host not registered), amber "!" when the host ran but the app didn't start; its tooltip says why. It clears once connected and doesn't flicker while reconnecting.
+  - The popup shows a red "Install the OmniDm app" notice with Get OmniDm, How to set up and Check again.
+  - Right after the extension is first installed, if the app isn't found, a setup page opens once (not on updates). It explains the steps, has a note for source builds (`.\omnidm-host.exe --register` in PowerShell), and checks every 3 s until it turns green.
+  - "Get OmniDm" points to the GitHub releases page, which has no installer until M7.
 
 ### M6: Media
 - [ ] HLS and DASH parsers, variant picker, AES-128, FFmpeg adapter.

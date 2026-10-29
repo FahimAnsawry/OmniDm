@@ -9,7 +9,8 @@ import { handleCreated, type CaptureDeps } from '../lib/capture';
 import { toBrowserCookie } from '../lib/cookies';
 import { encodeRequestBody, HeaderCache, type RequestBodyLike } from '../lib/header-cache';
 import { collectLinks, httpLinks } from '../lib/links';
-import { NativeLink } from '../lib/native';
+import { NativeLink, type LinkStatus } from '../lib/native';
+import { badgeFor, shouldOpenSetup } from '../lib/notice';
 import { loadSettings } from '../lib/settings-store';
 
 /** The host's registered name (plan §3). */
@@ -19,7 +20,7 @@ const MENU_LINK = 'omnidm-link';
 const MENU_ALL = 'omnidm-all-links';
 const MENU_SELECTED = 'omnidm-selected-links';
 
-/** Messages from the popup. */
+/** Messages from the popup and the setup page. */
 export type PopupRequest = { type: 'status' } | { type: 'connect' };
 
 export default defineBackground(() => {
@@ -41,6 +42,17 @@ export default defineBackground(() => {
         ? { type: 'cookiesResponse', payload: { cookies: await cookiesFor(envelope.payload.url) } }
         : undefined,
   });
+
+  // --- the "Install OmniDm" notice: a badge while the app can't be found ---
+  const showBadge = (status: LinkStatus) => {
+    // Keep the last badge while trying again, so it doesn't flicker.
+    if (status === 'connecting') return;
+    const badge = badgeFor(status);
+    void browser.action.setBadgeText({ text: badge.text });
+    void browser.action.setBadgeBackgroundColor({ color: badge.color });
+    void browser.action.setTitle({ title: badge.title });
+  };
+  link.onStatus(showBadge);
 
   // --- request headers and POST bodies, for the downloads they start ---
   const remember = (details: Browser.webRequest.OnSendHeadersDetails) => {
@@ -92,7 +104,15 @@ export default defineBackground(() => {
   });
 
   // --- context menus ---
-  browser.runtime.onInstalled.addListener(() => {
+  browser.runtime.onInstalled.addListener((details) => {
+    // Just installed and the app isn't on this PC: explain what else is needed, once.
+    if (details.reason === 'install') {
+      void link.open().then(() => {
+        if (shouldOpenSetup(details.reason, link.status)) {
+          void browser.tabs.create({ url: browser.runtime.getURL('/setup.html') });
+        }
+      });
+    }
     browser.contextMenus.create({ id: MENU_LINK, title: 'Download with OmniDm', contexts: ['link'] });
     browser.contextMenus.create({
       id: MENU_ALL,
