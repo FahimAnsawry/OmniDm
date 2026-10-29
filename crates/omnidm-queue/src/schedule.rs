@@ -23,6 +23,9 @@ pub struct Schedule {
     /// The queue stops (its downloads pause) at this time of day.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stop_at: Option<Time>,
+    /// Wake the PC from sleep for the start.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub wake: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

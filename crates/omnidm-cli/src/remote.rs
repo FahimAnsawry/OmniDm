@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! `omnidm get` and `omnidm list` through the running app, over the protocol (plan §8.2).
+//! `omnidm get`, `omnidm list` and `omnidm queue` through the running app, over the
+//! protocol (plan §8.2).
 
 use std::path::PathBuf;
 
@@ -94,12 +95,17 @@ pub async fn get_via_app<S: AsyncRead + AsyncWrite>(
             data: opts
                 .data
                 .map(|data| base64::engine::general_purpose::STANDARD.encode(data)),
+            queue: opts.queue.clone(),
         }))
         .await?;
     let download_id = match app.reply_to(&add).await? {
         Message::Added(added) => added.download_id,
         other => return Err(unexpected(&other)),
     };
+    if opts.queue.is_some() {
+        // It runs when its queue does, not now.
+        return Ok(GetResult::Queued(download_id));
+    }
 
     let watch = app
         .send(Message::Watch(DownloadRef { download_id }))
@@ -145,6 +151,16 @@ pub async fn list_via_app<S: AsyncRead + AsyncWrite>(
         Message::Downloads(downloads) => Ok(downloads.items),
         other => Err(unexpected(&other)),
     }
+}
+
+/// Sends one message to the app and returns its reply (an `error` reply becomes `Err`).
+pub async fn request<S: AsyncRead + AsyncWrite>(
+    connection: S,
+    message: Message,
+) -> Result<Message, CliError> {
+    let mut app = Conversation::new(connection);
+    let id = app.send(message).await?;
+    app.reply_to(&id).await
 }
 
 fn unexpected(message: &Message) -> CliError {

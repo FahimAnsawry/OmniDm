@@ -81,6 +81,31 @@ pub enum Message {
     Downloads(DownloadList),
     /// Asks the app to open its window (sent when OmniDm is started a second time).
     Show,
+
+    // --- queues (CLI ↔ app); each is answered with `ack`, `queues` or `error` ---
+    ListQueues,
+    Queues(QueueList),
+    CreateQueue(NewQueue),
+    EditQueue(QueueEdit),
+    DeleteQueue(QueueRef),
+    StartQueue(QueueRef),
+    /// Pauses the queue's running downloads; its after-queue action doesn't run.
+    StopQueue(QueueRef),
+    /// Adds downloads to the end of a queue, taking them out of any other.
+    QueueAdd(QueueItems),
+    /// Takes downloads out of whatever queue they are in.
+    QueueRemove(DownloadIds),
+    /// Moves a download within its queue.
+    QueueMove(QueueMove),
+    /// Cancels the after-queue action that is counting down.
+    CancelAfterQueue,
+
+    // --- categories (CLI ↔ app) ---
+    ListCategories,
+    Categories(CategoryList),
+    /// Sets where a category's browser downloads are saved; without a folder, they go to
+    /// the downloads folder.
+    SetCategoryFolder(CategoryFolder),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
@@ -286,6 +311,9 @@ pub struct AddRequest {
     /// Form data to `POST`, base64-encoded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data: Option<String>,
+    /// Put it in this queue (by name) instead of starting it now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -355,10 +383,203 @@ pub struct DownloadSummary {
     pub downloaded: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// The queue it is in, by name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue: Option<String>,
+    /// Its category, by name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct CategorySummary {
+    #[ts(type = "number")]
+    pub category_id: i64,
+    pub name: String,
+    /// File extensions without the dot.
+    #[ts(optional = false)]
+    pub extensions: Vec<String>,
+    /// MIME types; `video/*` matches every video type.
+    #[ts(optional = false)]
+    pub mime_types: Vec<String>,
+    /// Sites, each with its subdomains.
+    #[ts(optional = false)]
+    pub hosts: Vec<String>,
+    /// Where its browser downloads are saved; absent means the downloads folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct CategoryList {
+    pub items: Vec<CategorySummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, optional_fields)]
+pub struct CategoryFolder {
+    /// The category's name, ignoring case.
+    pub category: String,
+    /// An absolute folder; absent to use the downloads folder again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct DownloadList {
     pub items: Vec<DownloadSummary>,
+}
+
+/// Names a queue. Names are unique, ignoring case.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct QueueRef {
+    pub queue: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct NewQueue {
+    pub name: String,
+    /// Downloads running at once (default 3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_concurrent: Option<u32>,
+    /// `none` (default), `sleep`, `hibernate`, `shutdown` or `quit`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_complete: Option<String>,
+}
+
+/// Changes a queue; absent fields stay as they are.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct QueueEdit {
+    pub queue: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rename: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_concurrent: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_complete: Option<String>,
+    /// Replaces the whole schedule; an empty one means "only by hand".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<QueueSchedule>,
+}
+
+/// When a queue starts and stops by itself, in the PC's local time.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct QueueSchedule {
+    /// Start on each of `days` at this time, `HH:MM`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_at: Option<String>,
+    /// With `start_at`: `daily` (the default), `weekdays`, `weekend` or `mon,wed,fri`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub days: Option<String>,
+    /// Start once at this time, `YYYY-MM-DD HH:MM`; not together with `start_at`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub once: Option<String>,
+    /// Stop (pausing its downloads) at this time of day, `HH:MM`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_at: Option<String>,
+    /// Wake the PC from sleep for the start.
+    #[serde(default)]
+    #[ts(optional = false)]
+    pub wake: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct QueueItems {
+    pub queue: String,
+    #[ts(type = "number[]")]
+    pub download_ids: Vec<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct DownloadIds {
+    #[ts(type = "number[]")]
+    pub download_ids: Vec<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct QueueMove {
+    #[ts(type = "number")]
+    pub download_id: i64,
+    /// The new place, 0 = first; past the end means last.
+    pub index: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct QueueSummary {
+    #[ts(type = "number")]
+    pub queue_id: i64,
+    pub name: String,
+    pub max_concurrent: u32,
+    /// `none`, `sleep`, `hibernate`, `shutdown` or `quit`.
+    pub on_complete: String,
+    /// Started and not yet finished or stopped.
+    pub running: bool,
+    /// Its downloads, in order.
+    #[ts(type = "number[]")]
+    pub download_ids: Vec<i64>,
+    /// Absent when it only starts by hand and never stops by itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub schedule: Option<QueueSchedule>,
+    /// Its next scheduled start, `YYYY-MM-DD HH:MM` local time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub next_start: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct QueueList {
+    pub items: Vec<QueueSummary>,
+}
+
+/// A queue finished and its after-queue action is coming: sent every second while it
+/// counts down, then once more with the outcome.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct AfterQueue {
+    #[ts(type = "number")]
+    pub queue_id: i64,
+    pub queue: String,
+    /// `sleep`, `hibernate`, `shutdown` or `quit`.
+    pub action: String,
+    /// Seconds until it happens.
+    pub seconds_left: u32,
+    /// Other downloads are still running; the countdown starts when they end.
+    pub waiting_for_downloads: bool,
+    /// Absent while counting down.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<AfterQueueOutcome>,
+    /// Why it was cancelled or failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub enum AfterQueueOutcome {
+    Done,
+    Cancelled,
+    Failed,
 }

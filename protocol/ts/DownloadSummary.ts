@@ -4,4 +4,12 @@ export type DownloadSummary = { downloadId: number, url: string, fileName?: stri
 /**
  * `queued`, `running`, `paused`, `completed`, `failed`…
  */
-status: string, total?: number, downloaded: number, error?: string, };
+status: string, total?: number, downloaded: number, error?: string, 
+/**
+ * The queue it is in, by name.
+ */
+queue?: string, 
+/**
+ * Its category, by name.
+ */
+category?: string, };

@@ -16,4 +16,8 @@ cookies: Array<string>,
 /**
  * Form data to `POST`, base64-encoded.
  */
-data?: string, };
+data?: string, 
+/**
+ * Put it in this queue (by name) instead of starting it now.
+ */
+queue?: string, };

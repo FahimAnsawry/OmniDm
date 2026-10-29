@@ -11,5 +11,14 @@ repository.workspace = true
 jiff = { version = "0.2.38", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Power",
+    "Win32_System_Shutdown",
+    "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 serde_json = "1"

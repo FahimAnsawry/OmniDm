@@ -2,8 +2,12 @@
 
 //! Runs the app's downloads: browser captures (probed before they are accepted),
 //! downloads added by the CLI, pause and resume, and a waiting line beyond `max_active`.
+//! Queues (in `queues`) run their own downloads, each with its own limit.
 
-use std::collections::{HashMap, VecDeque};
+mod categories;
+mod queues;
+
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -15,13 +19,13 @@ use omnidm_core::engine::{
     EngineConfig, EngineError, Event, Method, Probe, Request, Resume, probe,
 };
 use omnidm_ipc::protocol::{
-    AddRequest, BrowserCookie, Capture, CaptureResult, DownloadSummary, FinishStatus, Finished,
-    Header, Progress, RejectReason,
+    AddRequest, AfterQueue, BrowserCookie, Capture, CaptureResult, DownloadSummary, FinishStatus,
+    Finished, Header, Progress, RejectReason,
 };
 use omnidm_net::cookies::{BrowserCookieSpec, CookieJar, Url};
 use omnidm_net::naming::{choose_file_name, sanitize_file_name};
 use omnidm_store::checkpoint::resume_from;
-use omnidm_store::{DownloadId, NewDownload, Status, Store, StoreError};
+use omnidm_store::{CategoryId, DownloadId, NewDownload, QueueId, Status, Store, StoreError};
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
@@ -39,8 +43,8 @@ pub struct ManagerConfig {
     pub data_dir: PathBuf,
     /// Captured downloads are saved here.
     pub downloads_dir: PathBuf,
-    /// Downloads running at once; more wait their turn. Captures always start at once,
-    /// because someone just clicked them.
+    /// Downloads outside queues running at once; more wait their turn. Captures always
+    /// start at once, because someone just clicked them. Queues have their own limits.
     pub max_active: usize,
     pub engine: EngineConfig,
     /// A capture whose probe takes longer goes back to the browser.
@@ -52,6 +56,14 @@ pub struct ManagerConfig {
 pub enum Update {
     Progress(Progress),
     Finished(Finished),
+    /// A started queue has nothing left to try (not sent when it is stopped).
+    QueueFinished {
+        queue_id: i64,
+        /// Downloads it started during the run; 0 if there was nothing to do.
+        tried: usize,
+    },
+    /// An after-queue action counting down, or how it ended.
+    AfterQueue(AfterQueue),
 }
 
 /// Where fresh cookies come from when a download resumes (the connected browser).
@@ -77,6 +89,10 @@ struct Inner {
     updates: broadcast::Sender<Update>,
     cookie_source: Mutex<Option<Arc<dyn CookieSource>>>,
     show: Mutex<Option<ShowHandler>>,
+    /// Told when a queue's schedule may have changed, so the scheduler looks again.
+    schedules_changed: tokio::sync::Notify,
+    /// Cancels the after-queue action counting down, if one is.
+    after_queue: Mutex<Option<CancellationToken>>,
 }
 
 /// Opens the app's window.
@@ -86,6 +102,41 @@ pub type ShowHandler = Arc<dyn Fn() + Send + Sync>;
 struct State {
     running: HashMap<i64, CancellationToken>,
     waiting: VecDeque<Pending>,
+    /// Started queues, by queue id.
+    queues: HashMap<i64, QueueRun>,
+}
+
+/// One run of a started queue.
+#[derive(Default)]
+struct QueueRun {
+    /// Downloads this run has started, or is about to start.
+    active: HashSet<i64>,
+    /// Downloads this run has started at some point. Each is tried once per run, so a
+    /// download that fails or is paused doesn't start over and over.
+    tried: HashSet<i64>,
+}
+
+impl State {
+    /// The queue whose run has `id` active.
+    fn owner(&self, id: i64) -> Option<i64> {
+        self.queues
+            .iter()
+            .find_map(|(&queue, run)| run.active.contains(&id).then_some(queue))
+    }
+
+    /// Room for one more download outside the queues.
+    fn has_free_slot(&self, max_active: usize) -> bool {
+        let unqueued = self
+            .running
+            .keys()
+            .filter(|&&id| self.owner(id).is_none())
+            .count();
+        unqueued < max_active.max(1)
+    }
+
+    fn is_busy(&self, id: i64) -> bool {
+        self.running.contains_key(&id) || self.waiting.iter().any(|p| p.id == id)
+    }
 }
 
 /// A download ready to run.
@@ -123,6 +174,8 @@ impl Manager {
                 updates,
                 cookie_source: Mutex::new(None),
                 show: Mutex::new(None),
+                schedules_changed: tokio::sync::Notify::new(),
+                after_queue: Mutex::new(None),
             }),
         })
     }
@@ -157,10 +210,45 @@ impl Manager {
         }
     }
 
+    /// Cancels the after-queue action counting down. `false` if none is.
+    pub fn cancel_after_queue(&self) -> bool {
+        match self.inner.after_queue.lock().unwrap().take() {
+            Some(cancel) => {
+                cancel.cancel();
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Claims the countdown for a new after-queue action; `None` while another counts.
+    pub(crate) fn begin_after_queue(&self) -> Option<CancellationToken> {
+        let mut current = self.inner.after_queue.lock().unwrap();
+        if current.is_some() {
+            return None;
+        }
+        let cancel = CancellationToken::new();
+        *current = Some(cancel.clone());
+        Some(cancel)
+    }
+
+    pub(crate) fn end_after_queue(&self) {
+        *self.inner.after_queue.lock().unwrap() = None;
+    }
+
+    pub(crate) fn send(&self, update: Update) {
+        let _ = self.inner.updates.send(update);
+    }
+
+    /// Any download running right now.
+    pub fn has_running(&self) -> bool {
+        !self.inner.state.lock().unwrap().running.is_empty()
+    }
+
     /// Running or waiting to run.
     pub fn is_active(&self, id: i64) -> bool {
         let state = self.inner.state.lock().unwrap();
-        state.running.contains_key(&id) || state.waiting.iter().any(|p| p.id == id)
+        state.is_busy(id) || state.owner(id).is_some()
     }
 
     /// Takes over a download from the browser, but only if OmniDm can fetch it itself:
@@ -201,8 +289,19 @@ impl Manager {
                     first.info.content_type.as_deref(),
                 )
             });
-        let dir = inner.config.downloads_dir.clone();
-        let id = match self.record_capture(&capture, &prepared, &dir, Some(name.clone())) {
+        let mime = first
+            .info
+            .content_type
+            .as_deref()
+            .or(capture.mime.as_deref());
+        let (category, dir) = self.place(
+            &name,
+            mime,
+            &first.info.final_url,
+            &inner.config.downloads_dir,
+        );
+        let id = match self.record_capture(&capture, &prepared, &dir, Some(name.clone()), category)
+        {
             Ok(id) => id,
             Err(e) => return rejected(RejectReason::NotAccepting, e.to_string()),
         };
@@ -227,9 +326,19 @@ impl Manager {
                     Ok(prepared) => prepared,
                     Err(detail) => return rejected(RejectReason::Invalid, detail),
                 };
-                let dir = self.inner.config.downloads_dir.clone();
                 let name = capture.suggested_name.as_deref().map(sanitize_file_name);
-                match self.record_capture(&capture, &prepared, &dir, name.clone()) {
+                // Before the server names it: the link's own name will do.
+                let url = capture.final_url.as_deref().unwrap_or(&capture.url);
+                let guess = name
+                    .clone()
+                    .unwrap_or_else(|| categories::name_from_url(url));
+                let (category, dir) = self.place(
+                    &guess,
+                    capture.mime.as_deref(),
+                    url,
+                    &self.inner.config.downloads_dir,
+                );
+                match self.record_capture(&capture, &prepared, &dir, name.clone(), category) {
                     Ok(id) => {
                         self.enqueue(Pending {
                             id,
@@ -248,8 +357,13 @@ impl Manager {
             .collect()
     }
 
-    /// Adds a download (from the CLI); it starts now or when a slot frees up.
+    /// Adds a download (from the CLI). It starts now or when a slot frees up, or, given a
+    /// queue, waits in that queue.
     pub fn add(&self, add: AddRequest) -> Result<i64, String> {
+        let queue = match &add.queue {
+            Some(name) => Some(queues::find(&self.inner.store.lock().unwrap(), name)?.id),
+            None => None,
+        };
         let url = Url::parse(&add.url).map_err(|e| format!("bad URL: {e}"))?;
         if !matches!(url.scheme(), "http" | "https") {
             return Err("only http and https links can be downloaded".into());
@@ -288,6 +402,11 @@ impl Manager {
             .flat_map(|pairs| cookies_from_pairs(&url, pairs))
             .collect();
         let file_name = add.file_name.as_deref().map(sanitize_file_name);
+        // The CLI chose the folder; the category is only recorded.
+        let guess = file_name
+            .clone()
+            .unwrap_or_else(|| categories::name_from_url(&add.url));
+        let (category, _) = self.place(&guess, None, &add.url, &dir);
         let mut store = self.inner.store.lock().unwrap();
         let id = store
             .insert_download(&NewDownload {
@@ -301,10 +420,21 @@ impl Manager {
                 body: body.clone(),
             })
             .map_err(|e| e.to_string())?;
+        if category.is_some() {
+            store
+                .set_download_category(id, category)
+                .map_err(|e| e.to_string())?;
+        }
         // Kept (encrypted) so a paused download can resume with them.
         if !given.is_empty() {
             let json = serde_json::to_vec(&given).map_err(|e| e.to_string())?;
             store.save_cookies(id, &json).map_err(|e| e.to_string())?;
+        }
+        if let Some(queue) = queue {
+            store.add_to_queue(queue, id).map_err(|e| e.to_string())?;
+            drop(store);
+            self.fill_queue(queue.0);
+            return Ok(id.0);
         }
         drop(store);
         let id = id.0;
@@ -333,10 +463,18 @@ impl Manager {
             cancel.cancel();
             return true;
         }
-        let Some(at) = state.waiting.iter().position(|p| p.id == id) else {
+        let mut refill = None;
+        if let Some(at) = state.waiting.iter().position(|p| p.id == id) {
+            state.waiting.remove(at);
+        } else if let Some(queue) = state.owner(id) {
+            // A queue was about to start it.
+            if let Some(run) = state.queues.get_mut(&queue) {
+                run.active.remove(&id);
+            }
+            refill = Some(queue);
+        } else {
             return false;
-        };
-        state.waiting.remove(at);
+        }
         drop(state);
         let _ = self
             .inner
@@ -345,18 +483,32 @@ impl Manager {
             .unwrap()
             .set_status(DownloadId(id), Status::Paused, None);
         self.finished(id, FinishStatus::Paused, None, None);
+        if let Some(queue) = refill {
+            self.fill_queue(queue);
+        }
         true
     }
 
     /// Continues a paused or failed download, with fresh cookies from the browser when it
     /// is connected, else the saved ones.
     pub async fn resume(&self, id: i64) -> Result<(), String> {
-        {
-            let state = self.inner.state.lock().unwrap();
-            if state.running.contains_key(&id) || state.waiting.iter().any(|p| p.id == id) {
-                return Ok(());
-            }
+        if self.is_active(id) {
+            return Ok(());
         }
+        let pending = self.load(id).await?;
+        self.inner
+            .store
+            .lock()
+            .unwrap()
+            .set_status(DownloadId(id), Status::Queued, None)
+            .map_err(|e| e.to_string())?;
+        self.enqueue(pending);
+        Ok(())
+    }
+
+    /// A stored, unfinished download ready to run again, with fresh cookies from the
+    /// browser when it is connected, else the saved ones.
+    async fn load(&self, id: i64) -> Result<Pending, String> {
         let (record, segments, saved) = {
             let store = self.inner.store.lock().unwrap();
             let record = store
@@ -397,13 +549,7 @@ impl Manager {
                 .save_cookies(record.id, &json);
         }
         let resume = resume_from(&record, segments).filter(|_| record.file_name.is_some());
-        self.inner
-            .store
-            .lock()
-            .unwrap()
-            .set_status(record.id, Status::Queued, None)
-            .map_err(|e| e.to_string())?;
-        self.enqueue(Pending {
+        Ok(Pending {
             id,
             dir: PathBuf::from(&record.save_dir),
             file_name: record.file_name.clone(),
@@ -417,8 +563,7 @@ impl Manager {
                 cookies: jar_from(&cookies),
             },
             connections: None,
-        });
-        Ok(())
+        })
     }
 
     /// Every download, oldest first.
@@ -427,6 +572,18 @@ impl Manager {
         let Ok(records) = store.list_downloads() else {
             return Vec::new();
         };
+        let queue_names: HashMap<QueueId, String> = store
+            .list_queues()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|q| (q.id, q.settings.name))
+            .collect();
+        let category_names: HashMap<CategoryId, String> = store
+            .list_categories()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|c| (c.id, c.settings.name))
+            .collect();
         records
             .into_iter()
             .map(|record| {
@@ -434,7 +591,13 @@ impl Manager {
                     .load_segments(record.id)
                     .map(|segments| segments.iter().map(|s| s.written).sum())
                     .unwrap_or(0);
+                let queue = store
+                    .queue_of(record.id)
+                    .ok()
+                    .flatten()
+                    .and_then(|q| queue_names.get(&q).cloned());
                 DownloadSummary {
+                    queue,
                     download_id: record.id.0,
                     url: record.url,
                     file_name: record.file_name,
@@ -443,6 +606,9 @@ impl Manager {
                     total: record.total_size,
                     downloaded,
                     error: record.error,
+                    category: record
+                        .category
+                        .and_then(|c| category_names.get(&c).cloned()),
                 }
             })
             .collect()
@@ -454,6 +620,7 @@ impl Manager {
         prepared: &PreparedCapture,
         dir: &Path,
         file_name: Option<String>,
+        category: Option<CategoryId>,
     ) -> Result<i64, StoreError> {
         let mut store = self.inner.store.lock().unwrap();
         let id = store.insert_download(&NewDownload {
@@ -466,6 +633,9 @@ impl Manager {
             method: prepared.request.method,
             body: prepared.request.body.clone(),
         })?;
+        if category.is_some() {
+            store.set_download_category(id, category)?;
+        }
         if !capture.private && !capture.cookies.is_empty() {
             let json = serde_json::to_vec(&capture.cookies)
                 .map_err(|e| StoreError::Corrupt(e.to_string()))?;
@@ -476,7 +646,7 @@ impl Manager {
 
     fn enqueue(&self, pending: Pending) {
         let mut state = self.inner.state.lock().unwrap();
-        if state.running.len() < self.inner.config.max_active.max(1) {
+        if state.has_free_slot(self.inner.config.max_active) {
             drop(state);
             self.start_now(pending);
         } else {
@@ -492,6 +662,11 @@ impl Manager {
             .unwrap()
             .running
             .insert(pending.id, cancel.clone());
+        self.run(pending, cancel);
+    }
+
+    /// Runs `pending` (already counted as running) on its own thread until it ends.
+    fn run(&self, pending: Pending, cancel: CancellationToken) {
         let mut config = self.inner.config.engine.clone();
         if let Some(connections) = pending.connections {
             config.ramp.max_connections = connections.clamp(1, omnidm_core::ramp::HARD_CAP);
@@ -533,36 +708,46 @@ impl Manager {
                     }));
                 }
             }));
-            match result {
-                Ok(JobOutcome::Completed(path)) => manager.finished(
-                    id,
+            let (status, path, error) = match result {
+                Ok(JobOutcome::Completed(path)) => (
                     FinishStatus::Completed,
                     Some(path.to_string_lossy().into_owned()),
                     None,
                 ),
-                Ok(JobOutcome::Paused) => manager.finished(id, FinishStatus::Paused, None, None),
+                Ok(JobOutcome::Paused) => (FinishStatus::Paused, None, None),
                 Err(JobError::Engine(e @ EngineError::LinkExpired)) => {
-                    manager.finished(id, FinishStatus::Paused, None, Some(e.to_string()));
+                    (FinishStatus::Paused, None, Some(e.to_string()))
                 }
-                Err(e) => manager.finished(id, FinishStatus::Failed, None, Some(e.to_string())),
-            }
-            manager.next(id);
+                Err(e) => (FinishStatus::Failed, None, Some(e.to_string())),
+            };
+            manager.next(id, || manager.finished(id, status, path, error));
         });
     }
 
-    /// `id` stopped: start the next waiting download, if any.
-    fn next(&self, id: i64) {
-        let next = {
+    /// `id` stopped: says so with `announce`, then starts the next download of its queue,
+    /// or the next waiting one. It is no longer counted as running when `announce` runs,
+    /// so a resume sent the moment it reports "paused" isn't mistaken for a duplicate.
+    fn next(&self, id: i64, announce: impl FnOnce()) {
+        let (queue, next) = {
             let mut state = self.inner.state.lock().unwrap();
             state.running.remove(&id);
-            if state.running.len() < self.inner.config.max_active.max(1) {
+            let queue = state.owner(id);
+            if let Some(run) = queue.and_then(|q| state.queues.get_mut(&q)) {
+                run.active.remove(&id);
+            }
+            let next = if queue.is_none() && state.has_free_slot(self.inner.config.max_active) {
                 state.waiting.pop_front()
             } else {
                 None
-            }
+            };
+            (queue, next)
         };
+        announce();
         if let Some(next) = next {
             self.start_now(next);
+        }
+        if let Some(queue) = queue {
+            self.fill_queue(queue);
         }
     }
 

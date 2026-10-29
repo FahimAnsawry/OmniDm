@@ -13,9 +13,13 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use omnidm_cli::{
     CliError, DATABASE_FILE, GetOptions, GetResult, data_dir, format_bytes, get, get_via_app,
-    list_via_app, parse_header, progress_line,
+    list_via_app, parse_header, progress_line, request,
 };
 use omnidm_core::engine::Event;
+use omnidm_ipc::protocol::{
+    CategoryFolder, DownloadIds, Message, NewQueue, QueueEdit, QueueItems, QueueMove, QueueRef,
+    QueueSchedule,
+};
 use omnidm_store::Store;
 use tokio_util::sync::CancellationToken;
 
@@ -56,9 +60,103 @@ enum Command {
         /// Content-Type header is given.
         #[arg(long)]
         data: Option<String>,
+        /// Add it to this queue of the app instead of downloading now.
+        #[arg(short, long)]
+        queue: Option<String>,
     },
     /// List downloads, oldest first.
     List,
+    /// Manage the app's queues: downloads that run in order, a few at a time.
+    Queue {
+        #[command(subcommand)]
+        action: QueueCommand,
+    },
+    /// See the app's categories, and choose where their browser downloads go.
+    Category {
+        #[command(subcommand)]
+        action: CategoryCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum CategoryCommand {
+    /// List the categories, in the order they are tried, with their folders.
+    List,
+    /// Save a category's browser downloads in this folder. Without one, they go to the
+    /// downloads folder.
+    Folder {
+        name: String,
+        folder: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum QueueCommand {
+    /// List the queues and their downloads.
+    List,
+    /// Make a new queue.
+    Create {
+        name: String,
+        /// Downloads running at once (1–16, default 3).
+        #[arg(short, long)]
+        max: Option<u32>,
+        /// What to do when it finishes: none, sleep, hibernate, shutdown or quit.
+        #[arg(long)]
+        then: Option<String>,
+    },
+    /// Change a queue.
+    Edit {
+        name: String,
+        #[arg(long)]
+        rename: Option<String>,
+        /// Downloads running at once (1–16).
+        #[arg(short, long)]
+        max: Option<u32>,
+        /// What to do when it finishes: none, sleep, hibernate, shutdown or quit.
+        #[arg(long)]
+        then: Option<String>,
+    },
+    /// Set when a queue starts and stops by itself (replacing its old schedule). With no
+    /// options, it only starts by hand.
+    Schedule {
+        name: String,
+        /// Start every chosen day at this time (HH:MM, 24-hour).
+        #[arg(long, value_name = "HH:MM", conflicts_with = "once")]
+        at: Option<String>,
+        /// With --at: daily (default), weekdays, weekend, or days like mon,wed,fri.
+        #[arg(long, requires = "at")]
+        days: Option<String>,
+        /// Start once at this date and time.
+        #[arg(long, value_name = "YYYY-MM-DD HH:MM")]
+        once: Option<String>,
+        /// Stop the queue (pausing its downloads) at this time (HH:MM).
+        #[arg(long, value_name = "HH:MM")]
+        stop: Option<String>,
+        /// Wake the PC from sleep to start.
+        #[arg(long)]
+        wake: bool,
+    },
+    /// Delete a queue. Its downloads stay, in no queue.
+    Delete { name: String },
+    /// Start a queue: it downloads everything unfinished in it, in order.
+    Start { name: String },
+    /// Stop a queue: its downloads pause.
+    Stop { name: String },
+    /// Put downloads (numbers from `omnidm list`) at the end of a queue.
+    Add {
+        name: String,
+        #[arg(required = true)]
+        ids: Vec<i64>,
+    },
+    /// Take downloads out of their queue.
+    Remove {
+        #[arg(required = true)]
+        ids: Vec<i64>,
+    },
+    /// Move a download to a place in its queue (1 = first).
+    Move { id: i64, position: u32 },
+    /// Cancel the sleep, shutdown or quit counting down after a queue finished.
+    CancelAction,
 }
 
 #[tokio::main]
@@ -84,6 +182,7 @@ async fn main() -> ExitCode {
             headers,
             cookies,
             data,
+            queue,
         } => {
             let opts = GetOptions {
                 url,
@@ -93,6 +192,7 @@ async fn main() -> ExitCode {
                 headers,
                 cookies,
                 data,
+                queue,
             };
             run_get(opts, app).await
         }
@@ -100,6 +200,218 @@ async fn main() -> ExitCode {
             Some(app) => list_from_app(app).await,
             None => list_standalone(),
         },
+        Command::Queue { action } => match app {
+            Some(app) => run_queue(action, app).await,
+            None => {
+                eprintln!("Error: queues belong to the OmniDm app, and it isn't running");
+                ExitCode::FAILURE
+            }
+        },
+        Command::Category { action } => match app {
+            Some(app) => run_category(action, app).await,
+            None => {
+                eprintln!("Error: categories belong to the OmniDm app, and it isn't running");
+                ExitCode::FAILURE
+            }
+        },
+    }
+}
+
+async fn run_category(action: CategoryCommand, app: AppConnection) -> ExitCode {
+    let (message, done) = match action {
+        CategoryCommand::List => (Message::ListCategories, String::new()),
+        CategoryCommand::Folder { name, folder } => {
+            // A relative folder means one under the current folder, as everywhere else.
+            let folder = match folder.map(std::path::absolute).transpose() {
+                Ok(folder) => folder,
+                Err(e) => {
+                    eprintln!("Error: {e}");
+                    return ExitCode::FAILURE;
+                }
+            };
+            let done = match &folder {
+                Some(folder) => format!("{name} downloads now go to {}.", folder.display()),
+                None => format!("{name} downloads now go to the downloads folder."),
+            };
+            let folder = folder.map(|f| f.to_string_lossy().into_owned());
+            (
+                Message::SetCategoryFolder(CategoryFolder {
+                    category: name,
+                    folder,
+                }),
+                done,
+            )
+        }
+    };
+    match request(app, message).await {
+        Ok(Message::Categories(categories)) => {
+            for c in categories.items {
+                let folder = c.folder.as_deref().unwrap_or("(downloads folder)");
+                println!("{}  →  {folder}", c.name);
+                let mut rules: Vec<String> = c.extensions.iter().map(|e| format!(".{e}")).collect();
+                rules.extend(c.mime_types);
+                rules.extend(c.hosts);
+                println!("      {}", rules.join(" "));
+            }
+            ExitCode::SUCCESS
+        }
+        Ok(_) => {
+            println!("{done}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("Error: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// "starts 02:00 weekdays, stops 07:00, wakes the PC (next start 2026-10-30 02:00)".
+fn describe(schedule: &QueueSchedule, next_start: Option<&str>) -> String {
+    let mut parts = Vec::new();
+    if let Some(at) = &schedule.start_at {
+        let days = schedule.days.as_deref().unwrap_or("daily");
+        parts.push(format!("starts {at} {days}"));
+    }
+    if let Some(once) = &schedule.once {
+        parts.push(format!("starts once at {once}"));
+    }
+    if let Some(stop) = &schedule.stop_at {
+        parts.push(format!("stops {stop}"));
+    }
+    if schedule.wake {
+        parts.push("wakes the PC".into());
+    }
+    let mut text = parts.join(", ");
+    if let Some(next) = next_start {
+        text.push_str(&format!(" (next start {next})"));
+    }
+    text
+}
+
+async fn run_queue(action: QueueCommand, app: AppConnection) -> ExitCode {
+    let (message, done) = match action {
+        QueueCommand::List => (Message::ListQueues, String::new()),
+        QueueCommand::Create { name, max, then } => (
+            Message::CreateQueue(NewQueue {
+                name: name.clone(),
+                max_concurrent: max,
+                on_complete: then,
+            }),
+            format!("Made queue {name}."),
+        ),
+        QueueCommand::Edit {
+            name,
+            rename,
+            max,
+            then,
+        } => (
+            Message::EditQueue(QueueEdit {
+                queue: name.clone(),
+                rename,
+                max_concurrent: max,
+                on_complete: then,
+                schedule: None,
+            }),
+            format!("Changed queue {name}."),
+        ),
+        QueueCommand::Schedule {
+            name,
+            at,
+            days,
+            once,
+            stop,
+            wake,
+        } => {
+            let off = at.is_none() && once.is_none() && stop.is_none();
+            (
+                Message::EditQueue(QueueEdit {
+                    queue: name.clone(),
+                    rename: None,
+                    max_concurrent: None,
+                    on_complete: None,
+                    schedule: Some(QueueSchedule {
+                        start_at: at,
+                        days,
+                        once,
+                        stop_at: stop,
+                        wake,
+                    }),
+                }),
+                if off {
+                    format!("Queue {name} now starts only by hand.")
+                } else {
+                    format!("Scheduled queue {name}. See it with: omnidm queue list")
+                },
+            )
+        }
+        QueueCommand::Delete { name } => (
+            Message::DeleteQueue(QueueRef {
+                queue: name.clone(),
+            }),
+            format!("Deleted queue {name}."),
+        ),
+        QueueCommand::Start { name } => (
+            Message::StartQueue(QueueRef {
+                queue: name.clone(),
+            }),
+            format!("Started queue {name}."),
+        ),
+        QueueCommand::Stop { name } => (
+            Message::StopQueue(QueueRef {
+                queue: name.clone(),
+            }),
+            format!("Stopped queue {name}."),
+        ),
+        QueueCommand::Add { name, ids } => (
+            Message::QueueAdd(QueueItems {
+                queue: name.clone(),
+                download_ids: ids,
+            }),
+            format!("Added to queue {name}."),
+        ),
+        QueueCommand::Remove { ids } => (
+            Message::QueueRemove(DownloadIds { download_ids: ids }),
+            "Taken out of their queue.".into(),
+        ),
+        QueueCommand::Move { id, position } => (
+            Message::QueueMove(QueueMove {
+                download_id: id,
+                index: position.saturating_sub(1),
+            }),
+            format!("Moved #{id}."),
+        ),
+        QueueCommand::CancelAction => (Message::CancelAfterQueue, "Cancelled.".into()),
+    };
+    match request(app, message).await {
+        Ok(Message::Queues(queues)) => {
+            for q in queues.items {
+                let state = if q.running { "running" } else { "stopped" };
+                println!(
+                    "{}  ({state}, {} at a time, then: {})",
+                    q.name, q.max_concurrent, q.on_complete
+                );
+                if let Some(schedule) = &q.schedule {
+                    println!("      {}", describe(schedule, q.next_start.as_deref()));
+                }
+                if q.download_ids.is_empty() {
+                    println!("      (empty)");
+                } else {
+                    let ids: Vec<String> =
+                        q.download_ids.iter().map(|id| format!("#{id}")).collect();
+                    println!("      {}", ids.join(" "));
+                }
+            }
+            ExitCode::SUCCESS
+        }
+        Ok(_) => {
+            println!("{done}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("Error: {e}");
+            ExitCode::FAILURE
+        }
     }
 }
 
@@ -211,6 +523,10 @@ fn report(result: Result<GetResult, CliError>) -> ExitCode {
             eprintln!("Paused. Run the same command again to resume.");
             ExitCode::from(EXIT_PAUSED)
         }
+        Ok(GetResult::Queued(id)) => {
+            println!("Added #{id} to the queue. It downloads when the queue runs.");
+            ExitCode::SUCCESS
+        }
         Err(e) => {
             eprintln!("Error: {e}");
             ExitCode::FAILURE
@@ -227,8 +543,10 @@ async fn list_from_app(app: AppConnection) -> ExitCode {
             for d in downloads {
                 let size = d.total.map_or_else(|| "?".to_string(), format_bytes);
                 let name = d.file_name.as_deref().unwrap_or("?");
+                let queue = d.queue.map(|q| format!("  [{q}]")).unwrap_or_default();
+                let category = d.category.map(|c| format!("  ({c})")).unwrap_or_default();
                 println!(
-                    "{:>4}  {:<9}  {size:>10}  {name}  {}",
+                    "{:>4}  {:<9}  {size:>10}  {name}{category}{queue}  {}",
                     d.download_id, d.status, d.url
                 );
                 if let Some(error) = d.error {

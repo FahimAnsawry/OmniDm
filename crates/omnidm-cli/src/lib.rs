@@ -4,7 +4,7 @@
 //! engine and the store) when the app isn't running.
 
 mod remote;
-pub use remote::{get_via_app, list_via_app};
+pub use remote::{get_via_app, list_via_app, request};
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -34,6 +34,8 @@ pub struct GetOptions {
     pub cookies: Vec<String>,
     /// Form data: the download is fetched with a `POST` carrying it.
     pub data: Option<String>,
+    /// Put it in this queue of the running app instead of downloading now.
+    pub queue: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +43,8 @@ pub enum GetResult {
     Completed(PathBuf),
     /// Stopped by the user; running the same command again resumes.
     Paused,
+    /// Added to a queue of the app, with this download id.
+    Queued(i64),
 }
 
 #[derive(Debug)]
@@ -87,6 +91,11 @@ pub async fn get(
     cancel: CancellationToken,
     mut progress: impl FnMut(&Event),
 ) -> Result<GetResult, CliError> {
+    if opts.queue.is_some() {
+        return Err(CliError::App(
+            "queues belong to the OmniDm app; start it first".into(),
+        ));
+    }
     std::fs::create_dir_all(data_dir)?;
     std::fs::create_dir_all(&opts.dir)?;
     let dir = std::path::absolute(&opts.dir)?;

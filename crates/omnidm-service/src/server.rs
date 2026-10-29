@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex};
 
 use omnidm_ipc::frame::{MAX_FROM_EXTENSION, read_frame_async, write_frame_async};
 use omnidm_ipc::protocol::{
-    BrowserCookie, CaptureManyResult, CookiesRequest, DownloadList, DownloadRef, Envelope,
-    ErrorInfo, FinishStatus, Finished, HelloAck, Message, PROTOCOL_VERSION,
+    BrowserCookie, CaptureManyResult, CategoryList, CookiesRequest, DownloadList, DownloadRef,
+    Envelope, ErrorInfo, FinishStatus, Finished, HelloAck, Message, PROTOCOL_VERSION, QueueList,
 };
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -136,6 +136,38 @@ where
             Message::List => reply(Message::Downloads(DownloadList {
                 items: manager.list(),
             })),
+            Message::ListQueues => reply(Message::Queues(QueueList {
+                items: manager.queues(),
+            })),
+            Message::CreateQueue(new) => answer(&out, id, manager.create_queue(new).map(drop)),
+            Message::EditQueue(edit) => answer(&out, id, manager.edit_queue(edit)),
+            Message::DeleteQueue(q) => answer(&out, id, manager.delete_queue(&q.queue)),
+            Message::StartQueue(q) => answer(&out, id, manager.start_queue(&q.queue)),
+            Message::StopQueue(q) => answer(&out, id, manager.stop_queue(&q.queue)),
+            Message::QueueAdd(items) => answer(
+                &out,
+                id,
+                manager.queue_add(&items.queue, &items.download_ids),
+            ),
+            Message::QueueRemove(items) => {
+                answer(&out, id, manager.queue_remove(&items.download_ids));
+            }
+            Message::QueueMove(m) => answer(&out, id, manager.queue_move(m.download_id, m.index)),
+            Message::ListCategories => reply(Message::Categories(CategoryList {
+                items: manager.categories(),
+            })),
+            Message::SetCategoryFolder(set) => answer(
+                &out,
+                id,
+                manager.set_category_folder(&set.category, set.folder),
+            ),
+            Message::CancelAfterQueue => {
+                if manager.cancel_after_queue() {
+                    reply(Message::Ack);
+                } else {
+                    let _ = out.send(error("notFound", "nothing is counting down").reply_to(id));
+                }
+            }
             other => {
                 let kind = serde_json::to_value(&other)
                     .ok()
@@ -154,6 +186,23 @@ where
     drop(as_source);
     drop(browser);
     let _ = writer_task.await;
+}
+
+/// Replies `ack`, or an error: `notFound` for an unknown queue, download or category, else
+/// `invalid`.
+fn answer(out: &mpsc::UnboundedSender<Envelope>, re: String, result: Result<(), String>) {
+    let message = match result {
+        Ok(()) => Envelope::new(new_id(), Message::Ack),
+        Err(e)
+            if ["no queue", "no download", "no category"]
+                .iter()
+                .any(|p| e.starts_with(p)) =>
+        {
+            error("notFound", &e)
+        }
+        Err(e) => error("invalid", &e),
+    };
+    let _ = out.send(message.reply_to(re));
 }
 
 fn exists(manager: &Manager, id: i64) -> bool {

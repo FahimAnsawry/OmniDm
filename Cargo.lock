@@ -2567,6 +2567,7 @@ version = "0.1.0"
 dependencies = [
  "omnidm-core",
  "omnidm-ipc",
+ "omnidm-queue",
  "omnidm-service",
  "serde_json",
  "tauri",
@@ -2656,6 +2657,7 @@ dependencies = [
  "jiff",
  "serde",
  "serde_json",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2664,9 +2666,11 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "fastrand",
+ "jiff",
  "omnidm-core",
  "omnidm-ipc",
  "omnidm-net",
+ "omnidm-queue",
  "omnidm-store",
  "omnidm-testserver",
  "reqwest",

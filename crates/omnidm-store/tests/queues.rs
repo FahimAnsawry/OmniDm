@@ -33,6 +33,7 @@ fn night_queue() -> QueueSettings {
                 days: Days::WEEKDAYS,
             }),
             stop_at: Some(time(7, 0, 0, 0)),
+            wake: false,
         },
         on_complete: PostAction::Sleep,
     }

@@ -9,6 +9,9 @@ use std::time::Duration;
 
 use omnidm_core::engine::EngineConfig;
 use omnidm_ipc::protocol::DownloadSummary;
+#[cfg(windows)]
+use omnidm_queue::power::SystemPower;
+use omnidm_queue::power::{NoPower, Power};
 use omnidm_service::manager::{Manager, ManagerConfig, Update};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -60,6 +63,18 @@ pub fn run() {
 
             #[cfg(windows)]
             tauri::async_runtime::spawn(omnidm_service::server::serve(manager.clone(), listener));
+            let power = power();
+            tauri::async_runtime::spawn(omnidm_service::scheduler::run(
+                manager.clone(),
+                power.clone(),
+            ));
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(omnidm_service::after_queue::run(
+                manager.clone(),
+                power,
+                Arc::new(move || handle.exit(0)),
+                omnidm_service::after_queue::COUNTDOWN,
+            ));
             forward_updates(app.handle().clone(), &manager);
             build_tray(app)?;
             if !background {
@@ -77,7 +92,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_downloads,
             pause_download,
-            resume_download
+            resume_download,
+            cancel_after_queue
         ])
         .run(tauri::generate_context!())
         .expect("error while running OmniDm");
@@ -88,9 +104,21 @@ fn list_downloads(manager: tauri::State<'_, Manager>) -> Vec<DownloadSummary> {
     manager.list()
 }
 
+// Async, so it runs on the runtime: pausing may start a queue's next download.
 #[tauri::command]
-fn pause_download(manager: tauri::State<'_, Manager>, id: i64) -> bool {
-    manager.pause(id)
+async fn pause_download(manager: tauri::State<'_, Manager>, id: i64) -> Result<bool, String> {
+    Ok(manager.pause(id))
+}
+
+/// Wake timers and keep-awake for the scheduler; without them, schedules still run while
+/// the PC is on.
+fn power() -> Arc<dyn Power> {
+    #[cfg(windows)]
+    match SystemPower::new() {
+        Ok(power) => return Arc::new(power),
+        Err(e) => eprintln!("OmniDm: can't use power management: {e}"),
+    }
+    Arc::new(NoPower)
 }
 
 #[tauri::command]
@@ -98,10 +126,17 @@ async fn resume_download(manager: tauri::State<'_, Manager>, id: i64) -> Result<
     manager.resume(id).await
 }
 
-/// Sends the service's progress and finished updates to the window.
+#[tauri::command]
+fn cancel_after_queue(manager: tauri::State<'_, Manager>) -> bool {
+    manager.cancel_after_queue()
+}
+
+/// Sends the service's updates to the window. An after-queue countdown also brings the
+/// window forward once, so whoever is at the PC can cancel it.
 fn forward_updates(app: AppHandle, manager: &Manager) {
     let mut updates = manager.subscribe();
     tauri::async_runtime::spawn(async move {
+        let mut shown_countdown = false;
         loop {
             match updates.recv().await {
                 Ok(Update::Progress(progress)) => {
@@ -109,6 +144,18 @@ fn forward_updates(app: AppHandle, manager: &Manager) {
                 }
                 Ok(Update::Finished(finished)) => {
                     let _ = app.emit("download-finished", finished);
+                }
+                Ok(Update::QueueFinished { queue_id, tried }) => {
+                    let finished = serde_json::json!({ "queueId": queue_id, "tried": tried });
+                    let _ = app.emit("queue-finished", finished);
+                }
+                Ok(Update::AfterQueue(notice)) => {
+                    let counting = notice.outcome.is_none() && !notice.waiting_for_downloads;
+                    if counting && !shown_countdown {
+                        show_window(&app);
+                    }
+                    shown_countdown = notice.outcome.is_none() && (shown_countdown || counting);
+                    let _ = app.emit("after-queue", notice);
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,

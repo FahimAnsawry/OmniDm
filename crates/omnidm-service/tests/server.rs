@@ -233,6 +233,7 @@ async fn the_cli_adds_watches_and_lists_downloads() {
             headers: vec![],
             cookies: vec![],
             data: None,
+            queue: None,
         }))
         .await;
     let Message::Added(added) = client.reply_to(&id).await.message else {
@@ -276,6 +277,7 @@ async fn watching_a_finished_download_answers_at_once() {
             headers: vec![],
             cookies: vec![],
             data: None,
+            queue: None,
         })
         .unwrap();
     while !matches!(

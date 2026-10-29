@@ -100,6 +100,7 @@ impl Env {
             headers: vec![],
             cookies: vec![],
             data: None,
+            queue: None,
         }
     }
 }

@@ -17,6 +17,7 @@ fn daily(hour: i8, minute: i8, days: Days) -> Schedule {
             days,
         }),
         stop_at: None,
+        wake: false,
     }
 }
 
@@ -70,6 +71,7 @@ fn once_fires_only_in_the_future() {
     let once = Schedule {
         start: Some(Start::Once(date(2026, 6, 10).at(23, 30, 0, 0))),
         stop_at: None,
+        wake: false,
     };
     assert_eq!(
         once.next_start(&at("2026-06-10T12:00")),
@@ -114,6 +116,7 @@ fn stop_is_the_next_time_on_any_day() {
     let schedule = Schedule {
         start: None,
         stop_at: Some(time(6, 0, 0, 0)),
+        wake: false,
     };
     assert_eq!(
         schedule.next_stop(&at("2026-06-10T02:00")),
@@ -147,6 +150,7 @@ fn schedule_stores_as_readable_json() {
             days: "mon,fri".parse().unwrap(),
         }),
         stop_at: Some(Time::constant(6, 30, 0, 0)),
+        wake: false,
     };
     let json = serde_json::to_string(&schedule).unwrap();
     assert_eq!(
@@ -158,6 +162,7 @@ fn schedule_stores_as_readable_json() {
     let once = Schedule {
         start: Some(Start::Once(date(2026, 6, 10).at(23, 30, 0, 0))),
         stop_at: None,
+        wake: false,
     };
     let json = serde_json::to_string(&once).unwrap();
     assert_eq!(json, r#"{"start":{"once":"2026-06-10T23:30:00"}}"#);

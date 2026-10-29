@@ -7,6 +7,7 @@
 //! `omnidm-service`; storing them in `omnidm-store`.
 
 pub mod category;
+pub mod power;
 pub mod schedule;
 
 use serde::{Deserialize, Serialize};

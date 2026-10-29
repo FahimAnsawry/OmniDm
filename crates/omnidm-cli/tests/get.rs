@@ -39,6 +39,7 @@ impl Env {
             headers: vec![],
             cookies: vec![],
             data: None,
+            queue: None,
         }
     }
 
@@ -346,6 +347,7 @@ async fn data_sends_a_post_and_is_remembered() {
     let env = env_with("/dl", spec.clone()).await;
     let opts = GetOptions {
         data: Some("id=7&agree=1".into()),
+        queue: None,
         output: Some("file.bin".into()),
         ..env.options("/dl")
     };

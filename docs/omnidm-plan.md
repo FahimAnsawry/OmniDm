@@ -545,19 +545,42 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 - Found while testing: IDM's "advanced browser integration" grabs downloads before any extension sees them. It has to be turned off in IDM to test OmniDm on a PC that has both.
 - **Done when:** clicking a download in Chrome, Edge and Firefox lands in OmniDm with cookies and referrer. An expiring link falls back to the browser. Uninstalling the host makes the browser download normally.
 
-### M4: Queues, scheduler, categories
-- [ ] Queues with concurrency and order. Scheduler with days/times and wake timers.
-- [ ] Post-queue actions with a 60 s cancellable countdown. Keep-awake.
-- [ ] Category rules (extension, MIME, host → folder).
+### M4: Queues, scheduler, categories ✅ (2026-10-29)
+- [x] Queues with concurrency and order. Scheduler with days/times and wake timers.
+- [x] Post-queue actions with a 60 s cancellable countdown. Keep-awake.
+- [x] Category rules (extension, MIME, host → folder).
 - Step 1 done (2026-10-29): the rules and storage.
   - `omnidm-queue`: schedules (once, or a time on chosen weekdays, plus an optional stop time) in the PC's time zone through `jiff`. A time skipped by a daylight-saving jump fires right after it; a repeated time fires once. Post-queue actions; category matching by extension, MIME type (`video/*`) or site, first match wins.
   - Schema version 4: `queues` (starts with "Main", 3 at a time, which can't be deleted), `queue_items` (a download is in one queue at most), `categories`, `downloads.category_id`. A category's rule is stored as one JSON column instead of the three columns in §7.
   - The default categories (Compressed, Documents, Music, Pictures, Programs, Video) have no folder of their own, so downloads keep going to the downloads folder until the user gives a category a folder.
+- Step 2 (2026-10-29): queues in the service.
+  - A started queue runs its unfinished downloads (waiting, paused or failed) from the top, `max_concurrent` at a time (1–16). Each is tried once per run, so a failing or hand-paused download is passed over, not retried in a loop; starting the queue again tries it again.
+  - When nothing is left, the run ends with a "queue finished" update carrying how many downloads it tried (0 for an empty queue, so step 4 can skip the after-queue action). Stopping a queue pauses its downloads and never sends it.
+  - Downloads outside queues keep the old rules (captures start at once; others share `max_active`). Queue downloads don't count against `max_active`.
+  - CLI: `omnidm queue list|create|edit|delete|start|stop|add|remove|move`, and `omnidm get --queue <name>`. Queue names are unique ignoring case.
+- Step 3 (2026-10-29): scheduler and power.
+  - `omnidm-service::scheduler` looks at the clock at least every 10 s, and at once when a schedule changes. A start or stop that came due since its last look is acted on even late (a PC that slept through 02:00 without a wake timer starts the queue on waking); when both came due, the later wins. Times from before OmniDm started aren't caught up on.
+  - Waking: per queue (`--wake`, off by default), a waitable timer set 60 s before the start. Windows only honours it when "Allow wake timers" is on in the power plan.
+  - Keep-awake: a "system required" power request while any download runs, so a timer-woken PC doesn't fall back asleep after about 2 minutes. It shows in `powercfg /requests` as "OmniDm is downloading".
+  - CLI: `omnidm queue schedule <name> [--at HH:MM [--days …] | --once "YYYY-MM-DD HH:MM"] [--stop HH:MM] [--wake]`; with no options the queue only starts by hand.
+  - Found while testing: a download stopped and only then left the "running" list, so a Resume sent the moment it reported "paused" was ignored. It now leaves the list first (a bug since M3).
+- Step 4 (2026-10-29): after-queue actions (`omnidm-service::after_queue`).
+  - Only a queue that finishes by itself after trying at least one download triggers its action; an empty or stopped queue never does. One action counts down at a time.
+  - If other downloads are still running, it waits for them; if one starts during the countdown, the action is called off.
+  - 60 s countdown, reported every second. The app brings its window forward once with a banner and a Cancel button; `omnidm queue cancel-action` cancels from the CLI.
+  - Sleep and hibernate use `SetSuspendState` with wake events left on (so a later wake timer still works); shutdown uses `ExitWindowsEx` (apps may save; only hung ones are forced). Both first turn on the shutdown privilege. Quit closes OmniDm.
+- Step 5 (2026-10-29): categories applied.
+  - A browser download is saved in its category's folder (made when first needed); with no folder, or one that can't be made, in the downloads folder. The category is decided after the probe, from the file name, the server's `Content-Type` and the site; for "download all links", from the link's name.
+  - CLI downloads keep their `-d` folder; their category is only recorded.
+  - CLI: `omnidm category list` and `omnidm category folder <name> [<folder>]`. `omnidm list` shows each download's category. Adding and editing categories is M5 (Settings → Categories).
 - **Done when:** a scheduled queue starts from sleep at the set time, runs 3 at a time, and puts the PC to sleep afterwards.
+  - **Not run live** (decided 2026-10-29: the live sleep/wake test was skipped). Covered by the automated tests instead: scheduled starts and stops on chosen clock times and on the real clock, at most N downloads at once, the after-queue countdown and each action with a stand-in for Windows, and Windows accepting the wake timer, the keep-awake request and the shutdown privilege. Waking from sleep and the real sleep have not been seen working.
+  - Found while checking: the dev PC's power plan has "Allow wake timers" at "Important wake timers only" (plugged in) and off (battery). Windows then ignores OmniDm's wake timer, so `--wake` silently does nothing. M5 should warn about this where a schedule with waking is set.
 
 ### M5: Desktop UI
 - [ ] Screens from §11.1, tray, notifications, autostart, clipboard monitor.
 - [ ] Capture prompt when a download is taken from the browser (with a setting to stay silent), and the extension's "Install OmniDm" notice when the host is missing (§9.3).
+- [ ] From M4: queue and schedule screens, category editing (add, remove, reorder, rules), and a warning when "wake the PC" is chosen but Windows' "Allow wake timers" is off. The live sleep/wake test skipped in M4 runs here.
 - [ ] Settings wired to the store and live-applied.
 - [ ] Site login: Basic and Digest auth, a username/password dialog on `401`, saved per site in Windows Credential Manager. The test server gets auth switches.
 - **Done when:** every engine feature is reachable from the UI. 500 downloads in the list scroll smoothly while 10 are running.
