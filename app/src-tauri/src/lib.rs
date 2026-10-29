@@ -4,7 +4,10 @@
 //! the named pipe, and shows the download list.
 
 mod capture;
+mod clipboard;
+mod details;
 mod notify;
+mod settings;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -58,6 +61,12 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            // Started with Windows: into the tray, like a start from the browser.
+            Some(vec!["--background"]),
+        ))
+        .manage(clipboard::ClipboardWatch::default())
         .setup(move |app| {
             let manager = Manager::start(ManagerConfig {
                 data_dir: data_dir(),
@@ -70,8 +79,9 @@ pub fn run() {
             })?;
             let handle = app.handle().clone();
             manager.set_show_handler(Arc::new(move || show_window(&handle)));
-            manager.set_ask_before_download(capture::saved_choice(&manager));
             app.manage(manager.clone());
+            settings::apply_saved(app.handle());
+            clipboard::start(app.handle().clone());
 
             #[cfg(windows)]
             tauri::async_runtime::spawn(omnidm_service::server::serve(manager.clone(), listener));
@@ -125,7 +135,15 @@ pub fn run() {
             capture::capture_prompt,
             capture::answer_capture,
             capture::cancel_capture,
-            capture::set_ask_before_download
+            capture::set_ask_before_download,
+            settings::get_settings,
+            settings::save_settings,
+            settings::create_category,
+            settings::edit_category,
+            settings::delete_category,
+            settings::move_category,
+            details::open_details,
+            details::download_details
         ])
         .run(tauri::generate_context!())
         .expect("error while running OmniDm");
@@ -426,7 +444,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
-fn show_window(app: &AppHandle) {
+pub(crate) fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();

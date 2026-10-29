@@ -4,10 +4,10 @@
 
 use std::path::{Path, PathBuf};
 
-use omnidm_ipc::protocol::CategorySummary;
+use omnidm_ipc::protocol::{CategoryEdit, CategorySummary};
 use omnidm_net::cookies::Url;
-use omnidm_queue::category::{FileFacts, pick};
-use omnidm_store::{CategoryId, CategoryRecord};
+use omnidm_queue::category::{CategoryRule, FileFacts, pick};
+use omnidm_store::{CategoryId, CategoryRecord, CategorySettings};
 
 use super::Manager;
 
@@ -50,9 +50,57 @@ impl Manager {
             .map_err(|e| e.to_string())
     }
 
+    /// Adds a category, tried after the others. Returns its id.
+    pub fn create_category(&self, edit: CategoryEdit) -> Result<i64, String> {
+        let settings = check_category(edit)?;
+        let mut store = self.inner.store.lock().unwrap();
+        let all = store.list_categories().map_err(|e| e.to_string())?;
+        name_is_free(&all, &settings.name, None)?;
+        store
+            .insert_category(&settings)
+            .map(|id| id.0)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Replaces a category's name, rule and folder.
+    pub fn edit_category(&self, id: i64, edit: CategoryEdit) -> Result<(), String> {
+        let settings = check_category(edit)?;
+        let mut store = self.inner.store.lock().unwrap();
+        let all = store.list_categories().map_err(|e| e.to_string())?;
+        if !all.iter().any(|c| c.id.0 == id) {
+            return Err(format!("no category #{id}"));
+        }
+        name_is_free(&all, &settings.name, Some(id))?;
+        store
+            .update_category(CategoryId(id), &settings)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Deletes a category; its downloads keep their files and lose the category.
+    pub fn delete_category(&self, id: i64) -> Result<(), String> {
+        let mut store = self.inner.store.lock().unwrap();
+        if !matches!(store.get_category(CategoryId(id)), Ok(Some(_))) {
+            return Err(format!("no category #{id}"));
+        }
+        store
+            .delete_category(CategoryId(id))
+            .map_err(|e| e.to_string())
+    }
+
+    /// Moves a category to `index` in the order they are tried (the first match wins).
+    pub fn move_category(&self, id: i64, index: usize) -> Result<(), String> {
+        let mut store = self.inner.store.lock().unwrap();
+        if !matches!(store.get_category(CategoryId(id)), Ok(Some(_))) {
+            return Err(format!("no category #{id}"));
+        }
+        store
+            .move_category(CategoryId(id), index)
+            .map_err(|e| e.to_string())
+    }
+
     /// The category of a file, by its name, MIME type and URL, and the folder to save it
     /// in: the category's own folder, or `fallback`. A category folder that can't be made
-    /// falls back too.
+    /// falls back too. The folder is made if it doesn't exist yet.
     pub(super) fn place(
         &self,
         file_name: &str,
@@ -60,14 +108,44 @@ impl Manager {
         url: &str,
         fallback: &Path,
     ) -> (Option<CategoryId>, PathBuf) {
-        let Some(category) = self.category_for(file_name, mime, url) else {
-            return (None, fallback.to_path_buf());
-        };
-        let dir = match &category.settings.save_dir {
+        let category = self.category_for(file_name, mime, url);
+        let dir = match category.as_ref().and_then(|c| c.settings.save_dir.as_ref()) {
             Some(folder) if std::fs::create_dir_all(folder).is_ok() => PathBuf::from(folder),
-            _ => fallback.to_path_buf(),
+            _ => {
+                // A failure shows when the download starts, with the reason.
+                let _ = std::fs::create_dir_all(fallback);
+                fallback.to_path_buf()
+            }
         };
-        (Some(category.id), dir)
+        (category.map(|c| c.id), dir)
+    }
+
+    /// A web link whose name ends in an extension one of the categories lists, such as
+    /// `…/setup.exe`: worth offering to download when it is copied.
+    pub fn looks_like_file(&self, url: &str) -> bool {
+        let Ok(parsed) = Url::parse(url.trim()) else {
+            return false;
+        };
+        if !matches!(parsed.scheme(), "http" | "https") {
+            return false;
+        }
+        let name = name_from_url(url.trim());
+        if !name.contains('.') {
+            return false;
+        }
+        let categories = self
+            .inner
+            .store
+            .lock()
+            .unwrap()
+            .list_categories()
+            .unwrap_or_default();
+        let file = FileFacts {
+            file_name: &name,
+            mime: None,
+            host: None,
+        };
+        pick(categories.iter().map(|c| (c, &c.settings.rule)), &file).is_some()
     }
 
     /// The first category whose rule matches the file.
@@ -94,6 +172,93 @@ impl Manager {
         };
         pick(categories.iter().map(|c| (c, &c.settings.rule)), &file).cloned()
     }
+}
+
+/// Tidies and checks what the user typed for a category.
+fn check_category(edit: CategoryEdit) -> Result<CategorySettings, String> {
+    let name = edit.name.trim().to_string();
+    if name.is_empty() {
+        return Err("the category needs a name".into());
+    }
+    if name.chars().count() > 40 {
+        return Err("the category name is too long (40 characters at most)".into());
+    }
+    let extensions = tidy(edit.extensions, |e| {
+        let e = e.trim_start_matches('.').to_lowercase();
+        if e.contains(['/', '\\', ' ', '*']) {
+            return Err(format!("{e:?} isn't a file extension, like zip or tar.gz"));
+        }
+        Ok(e)
+    })?;
+    let mime_types = tidy(edit.mime_types, |m| {
+        let m = m.to_lowercase();
+        if m.split('/').count() != 2 || m.starts_with('/') || m.ends_with('/') || m.contains(' ') {
+            return Err(format!(
+                "{m:?} isn't a file type, like video/* or application/pdf"
+            ));
+        }
+        Ok(m)
+    })?;
+    let hosts = tidy(edit.hosts, |h| {
+        let h = h.to_lowercase();
+        let h = h
+            .strip_prefix("https://")
+            .or_else(|| h.strip_prefix("http://"))
+            .unwrap_or(&h);
+        let h = h.split('/').next().unwrap_or_default();
+        let h = h.trim_start_matches("*.").trim_end_matches('.');
+        if h.is_empty() || h.contains([' ', '*', '\\', '@']) {
+            return Err(format!("{h:?} isn't a site, like example.com"));
+        }
+        Ok(h.to_string())
+    })?;
+    let folder = edit
+        .folder
+        .map(|f| f.trim().to_string())
+        .filter(|f| !f.is_empty());
+    if let Some(folder) = &folder
+        && !Path::new(folder).is_absolute()
+    {
+        return Err(format!("{folder:?} isn't a full path, like D:\\Videos"));
+    }
+    Ok(CategorySettings {
+        name,
+        rule: CategoryRule {
+            extensions,
+            mime_types,
+            hosts,
+        },
+        save_dir: folder,
+    })
+}
+
+/// Trims each entry, drops blank ones and repeats, and checks the rest with `check`.
+fn tidy(
+    entries: Vec<String>,
+    check: impl Fn(&str) -> Result<String, String>,
+) -> Result<Vec<String>, String> {
+    let mut kept: Vec<String> = Vec::new();
+    for entry in entries {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let entry = check(entry)?;
+        if !entry.is_empty() && !kept.contains(&entry) {
+            kept.push(entry);
+        }
+    }
+    Ok(kept)
+}
+
+fn name_is_free(all: &[CategoryRecord], name: &str, except: Option<i64>) -> Result<(), String> {
+    if all
+        .iter()
+        .any(|c| Some(c.id.0) != except && c.settings.name.eq_ignore_ascii_case(name))
+    {
+        return Err(format!("there is already a category named {name:?}"));
+    }
+    Ok(())
 }
 
 /// The last part of a URL's path, as a stand-in name before the server names the file.

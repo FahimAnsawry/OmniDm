@@ -28,6 +28,7 @@ fn info() -> RemoteInfo {
         content_type: Some("application/zip".into()),
         content_disposition: None,
         final_method: Method::Get,
+        redirects: vec![],
     }
 }
 
@@ -202,6 +203,7 @@ fn a_post_download_resumes_with_the_method_it_ended_with() {
     }
     .probed(&RemoteInfo {
         final_method: Method::Post,
+        redirects: vec![],
         ..info()
     })
     .unwrap();

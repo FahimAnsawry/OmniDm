@@ -22,7 +22,7 @@ pub mod checkpoint;
 mod dpapi;
 
 /// Schema version this build creates and understands.
-pub const SCHEMA_VERSION: u32 = 5;
+pub const SCHEMA_VERSION: u32 = 6;
 
 /// Each entry upgrades the schema from version `index` to `index + 1`.
 const MIGRATIONS: [&str; SCHEMA_VERSION as usize] = [
@@ -107,11 +107,15 @@ const MIGRATIONS: [&str; SCHEMA_VERSION as usize] = [
         value TEXT NOT NULL
     );
 "#,
+    r#"
+    ALTER TABLE downloads ADD COLUMN content_type TEXT;
+    ALTER TABLE downloads ADD COLUMN redirects_json TEXT;
+"#,
 ];
 
 const DOWNLOAD_COLUMNS: &str = "id, url, save_dir, file_name, referrer, user_agent, final_url, \
      total_size, etag, last_modified, resumable, status, error, created_at, completed_at, \
-     method, body, final_method, category_id";
+     method, body, final_method, category_id, content_type, redirects_json";
 
 /// The queue every database starts with. It can't be deleted.
 pub const MAIN_QUEUE: QueueId = QueueId(1);
@@ -200,6 +204,10 @@ pub struct ProbeResult {
     pub resumable: bool,
     /// The method after redirects.
     pub final_method: Method,
+    /// What the server said the file is (`Content-Type`).
+    pub content_type: Option<String>,
+    /// The redirects followed to reach the file: each status and where it led.
+    pub redirects: Vec<(u16, String)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -226,6 +234,10 @@ pub struct DownloadRecord {
     pub created_at: i64,
     pub completed_at: Option<i64>,
     pub category: Option<CategoryId>,
+    /// From the last probe: what the server said the file is.
+    pub content_type: Option<String>,
+    /// From the last probe: the redirects followed to reach the file.
+    pub redirects: Vec<(u16, String)>,
 }
 
 #[derive(Debug)]
@@ -393,7 +405,8 @@ impl Store {
         self.conn.execute(
             "UPDATE downloads
              SET final_url = ?2, file_name = ?3, total_size = ?4, etag = ?5,
-                 last_modified = ?6, resumable = ?7, final_method = ?8
+                 last_modified = ?6, resumable = ?7, final_method = ?8,
+                 content_type = ?9, redirects_json = ?10
              WHERE id = ?1",
             params![
                 id.0,
@@ -404,6 +417,9 @@ impl Store {
                 probe.last_modified,
                 probe.resumable,
                 probe.final_method.as_str(),
+                probe.content_type,
+                serde_json::to_string(&probe.redirects)
+                    .map_err(|e| StoreError::Corrupt(e.to_string()))?,
             ],
         )?;
         Ok(())
@@ -813,6 +829,7 @@ fn read_download(r: &Row<'_>) -> rusqlite::Result<Result<DownloadRecord>> {
     let body: Option<Vec<u8>> = r.get(16)?;
     let final_method: Option<String> = r.get(17)?;
     let category: Option<i64> = r.get(18)?;
+    let redirects: Option<String> = r.get(20)?;
     let id = DownloadId(r.get(0)?);
     let record = (|| {
         Ok(DownloadRecord {
@@ -836,6 +853,12 @@ fn read_download(r: &Row<'_>) -> rusqlite::Result<Result<DownloadRecord>> {
             created_at: r.get(13)?,
             completed_at: r.get(14)?,
             category: category.map(CategoryId),
+            content_type: r.get(19)?,
+            redirects: match redirects {
+                Some(json) => serde_json::from_str(&json)
+                    .map_err(|e| StoreError::Corrupt(format!("redirects: {e}")))?,
+                None => Vec::new(),
+            },
         })
     })();
     Ok(record)

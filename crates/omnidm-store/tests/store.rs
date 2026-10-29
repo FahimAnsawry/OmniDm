@@ -114,10 +114,18 @@ fn probe_result_is_stored() {
                 last_modified: Some("Tue, 14 Nov 2023 22:13:20 GMT".into()),
                 resumable: true,
                 final_method: Method::Get,
+                content_type: Some("application/zip".into()),
+                redirects: vec![
+                    (302, "https://e.com/mirror/a".into()),
+                    (301, "https://cdn.e.com/a.zip".into()),
+                ],
             },
         )
         .unwrap();
     let d = store.get_download(id).unwrap().unwrap();
+    assert_eq!(d.content_type.as_deref(), Some("application/zip"));
+    assert_eq!(d.redirects.len(), 2);
+    assert_eq!(d.redirects[1], (301, "https://cdn.e.com/a.zip".to_string()));
     assert_eq!(d.final_url.as_deref(), Some("https://cdn.e.com/a.zip"));
     assert_eq!(d.file_name.as_deref(), Some("a.zip"));
     assert_eq!(d.total_size, Some(5_000_000_000));
@@ -344,6 +352,8 @@ fn the_probe_records_the_method_after_redirects() {
                 last_modified: None,
                 resumable: true,
                 final_method: Method::Get,
+                content_type: None,
+                redirects: vec![],
             },
         )
         .unwrap();

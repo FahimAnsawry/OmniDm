@@ -156,6 +156,15 @@ pub struct RemoteInfo {
     /// The method after redirects (a `303` turns a `POST` into a `GET`); every range
     /// request uses it.
     pub final_method: Method,
+    /// The redirects followed to reach the file, in order.
+    pub redirects: Vec<Redirect>,
+}
+
+/// One redirect: the status the server answered and where it sent the request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Redirect {
+    pub status: u16,
+    pub to: String,
 }
 
 /// State saved earlier, used to continue a download.
@@ -183,6 +192,23 @@ pub enum Event {
         speed: u64,
         connections: u32,
     },
+    /// Every segment, sent with each progress update of a segmented download.
+    Segments(Vec<SegmentState>),
+    /// Something worth a line in the download's log, such as a retry.
+    Log(String),
+}
+
+/// A segment as the download's details show it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SegmentState {
+    pub start: u64,
+    /// Its last byte (inclusive), as in [`Segment`].
+    pub end: u64,
+    pub written: u64,
+    /// A connection is working on it.
+    pub active: bool,
+    /// Bytes per second.
+    pub speed: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -259,10 +285,12 @@ pub async fn probe(
     config: &EngineConfig,
     cancel: &CancellationToken,
 ) -> Result<Option<Probe>, EngineError> {
-    let Some((response, method)) = first_response(client, request, config, cancel).await? else {
+    let Some((response, method, redirects)) =
+        first_response(client, request, config, cancel).await?
+    else {
         return Ok(None);
     };
-    let info = remote_info(&response, method);
+    let info = remote_info(&response, method, redirects);
     if !config.allow_html
         && info
             .content_type
@@ -314,8 +342,24 @@ pub async fn download(
     };
 
     if let Some(ctx) = resume.and_then(|r| Ctx::resumed(client, request, part_path, r, config)) {
+        let done: u64 = ctx
+            .shared
+            .lock()
+            .unwrap()
+            .map
+            .segments()
+            .iter()
+            .map(|s| s.written)
+            .sum();
+        run.log(format!(
+            "Continuing: {} of {} already downloaded",
+            bytes(done),
+            bytes(ctx.total)
+        ));
         match run.segmented(ctx, None).await {
-            Err(EngineError::RemoteChanged) if config.restart_if_changed => {}
+            Err(EngineError::RemoteChanged) if config.restart_if_changed => {
+                run.log("The file changed on the server; starting again from zero".into());
+            }
             other => return other,
         }
     }
@@ -351,6 +395,23 @@ impl Run<'_> {
             .probed(&info)
             .map_err(EngineError::Checkpoint)?;
         self.emit(Event::Probed(info.clone()));
+        for hop in &info.redirects {
+            self.log(format!("Redirected ({}) to {}", hop.status, hop.to));
+        }
+        self.log(format!(
+            "The server sent {}{}; {}",
+            info.total
+                .map_or_else(|| "a file of unknown size".to_string(), bytes),
+            info.content_type
+                .as_deref()
+                .map(|t| format!(" ({t})"))
+                .unwrap_or_default(),
+            if info.resumable {
+                "it can be split into pieces and resumed"
+            } else {
+                "it can't be split or resumed, so it uses one connection"
+            }
+        ));
 
         if let Some(total) = info.total {
             check_free_space(part_path, total)?;
@@ -384,7 +445,7 @@ async fn first_response(
     request: &Request,
     config: &EngineConfig,
     cancel: &CancellationToken,
-) -> Result<Option<(Response, Method)>, EngineError> {
+) -> Result<Option<(Response, Method, Vec<Redirect>)>, EngineError> {
     let everything = RequestedRange {
         start: 0,
         end: None,
@@ -402,10 +463,10 @@ async fn first_response(
         )
         .await
         {
-            Ok((response, method)) => {
+            Ok((response, method, redirects)) => {
                 let status = response.status().as_u16();
                 match classify_status(status) {
-                    StatusClass::Success => return Ok(Some((response, method))),
+                    StatusClass::Success => return Ok(Some((response, method, redirects))),
                     StatusClass::Retry => (EngineError::Status(status), None),
                     StatusClass::SlowDown => {
                         (EngineError::Status(status), retry_after(response.headers()))
@@ -452,6 +513,10 @@ async fn wait(cancel: &CancellationToken, delay: Duration) -> bool {
 }
 
 impl Run<'_> {
+    fn log(&self, line: String) {
+        self.emit(Event::Log(line));
+    }
+
     fn emit(&self, event: Event) {
         if let Some(tx) = &self.events {
             let _ = tx.send(event);
@@ -553,11 +618,25 @@ impl Run<'_> {
                         continue;
                     };
                     if err.means_link_expired() {
+                        if !link_expired {
+                            self.log(format!(
+                                "The server refused the link ({}); it may have expired",
+                                err.describe()
+                            ));
+                        }
                         link_expired = true;
                         continue;
                     }
                     if err.means_server_busy() {
-                        max_connections = max_connections.min(active.len().max(1));
+                        let lowered = max_connections.min(active.len().max(1));
+                        if lowered < max_connections {
+                            self.log(format!(
+                                "The server is busy ({}); using at most {lowered} connection{}",
+                                err.describe(),
+                                if lowered == 1 { "" } else { "s" }
+                            ));
+                        }
+                        max_connections = lowered;
                     }
                     let written = ctx.segment(id).map_or(0, |s| s.written);
                     let attempts = err.retry_hint().map(|hint| {
@@ -569,11 +648,22 @@ impl Run<'_> {
                         *count += 1;
                         (*count, hint)
                     });
+                    let range = ctx.segment(id).map(|s| range_text(&s)).unwrap_or_default();
                     match attempts {
                         Some((count, hint)) if count < config.retry.max_attempts => {
-                            retry_at.insert(id, Instant::now() + self.retry_delay(count, hint));
+                            let delay = self.retry_delay(count, hint);
+                            self.log(format!(
+                                "A connection failed ({}); trying {range} again in {}",
+                                err.describe(),
+                                seconds(delay)
+                            ));
+                            retry_at.insert(id, Instant::now() + delay);
                         }
                         _ => {
+                            self.log(format!(
+                                "A connection for {range} failed ({}); giving up",
+                                err.describe()
+                            ));
                             workers.shutdown().await;
                             self.checkpoint(&ctx)?;
                             return Err(err.into_engine_error());
@@ -607,6 +697,7 @@ impl Run<'_> {
                     if complete && active.is_empty() {
                         self.checkpoint(&ctx)?;
                         self.progress(&ctx, 0);
+                        self.segments(&ctx, &active);
                         return Ok(Outcome::Completed { size: ctx.total });
                     }
                     if link_expired && active.is_empty() {
@@ -641,6 +732,13 @@ impl Run<'_> {
                         let Some(new_id) = ctx.split(config.split, now) else { break };
                         spawn(&mut workers, &mut active, &mut worker_handles, new_id, None);
                         added += 1;
+                        if let Some(segment) = ctx.segment(new_id) {
+                            self.log(format!(
+                                "Opened connection {} for {}",
+                                active.len(),
+                                range_text(&segment)
+                            ));
+                        }
                     }
                     if added > 0 {
                         ramp.record_round(now);
@@ -665,6 +763,10 @@ impl Run<'_> {
                                 continue;
                             }
                             duplicated.insert(id);
+                            self.log(format!(
+                                "{} is going slowly; asking for it on a second connection too",
+                                range_text(&segment)
+                            ));
                             let handle = duplicates.spawn(duplicate(
                                 ctx.clone(),
                                 id,
@@ -683,6 +785,7 @@ impl Run<'_> {
                         last_checkpoint = now;
                     }
                     self.progress(&ctx, active.len() as u32);
+                    self.segments(&ctx, &active);
                 }
             }
         }
@@ -701,13 +804,18 @@ impl Run<'_> {
         let mut attempt = 1;
         loop {
             match self.stream_once(response, part_path, expected).await {
-                Err(EngineError::Network(_)) if attempt < self.config.retry.max_attempts => {
-                    if self.wait(self.retry_delay(attempt, None)).await {
+                Err(EngineError::Network(e)) if attempt < self.config.retry.max_attempts => {
+                    let delay = self.retry_delay(attempt, None);
+                    self.log(format!(
+                        "The connection broke ({e}); starting again from zero in {}",
+                        seconds(delay)
+                    ));
+                    if self.wait(delay).await {
                         return Ok(Outcome::Paused);
                     }
                     attempt += 1;
                     match first_response(client, request, self.config, &self.cancel).await? {
-                        Some((next, _)) => response = next,
+                        Some((next, _, _)) => response = next,
                         None => return Ok(Outcome::Paused),
                     }
                 }
@@ -805,6 +913,34 @@ impl Run<'_> {
         self.checkpointer
             .save(&segments)
             .map_err(EngineError::Checkpoint)
+    }
+
+    /// Sends every segment's state, unless nobody is listening.
+    fn segments(&self, ctx: &Ctx, active: &HashSet<SegmentId>) {
+        if self.events.is_none() {
+            return;
+        }
+        let speeds = ctx.speeds(Instant::now());
+        let segments = ctx
+            .shared
+            .lock()
+            .unwrap()
+            .map
+            .segments()
+            .iter()
+            .map(|s| SegmentState {
+                start: s.start,
+                end: s.end,
+                written: s.written,
+                active: active.contains(&s.id),
+                speed: if active.contains(&s.id) {
+                    speeds.get(&s.id).copied().unwrap_or(0)
+                } else {
+                    0
+                },
+            })
+            .collect();
+        self.emit(Event::Segments(segments));
     }
 
     fn progress(&self, ctx: &Ctx, connections: u32) {
@@ -1037,6 +1173,21 @@ impl WorkerError {
         }
     }
 
+    /// A short description for the log.
+    fn describe(&self) -> String {
+        match self {
+            Self::Network(e) | Self::Fatal(e) => e.clone(),
+            Self::Status { code, .. } | Self::Range(RangeError::Status(code)) => {
+                format!("HTTP {code}")
+            }
+            Self::Range(RangeError::Mismatch(_) | RangeError::MissingContentRange) => {
+                "the server answered a different range".into()
+            }
+            Self::Range(_) => "the file changed on the server".into(),
+            Self::Io(e) => e.to_string(),
+        }
+    }
+
     fn into_engine_error(self) -> EngineError {
         match self {
             Self::Network(e) | Self::Fatal(e) => EngineError::Network(e),
@@ -1103,7 +1254,7 @@ async fn open_range(ctx: &Ctx, start: u64, end: u64) -> Result<Response, WorkerE
         start,
         end: Some(end),
     };
-    let (response, _) = send(
+    let (response, _, _) = send(
         &ctx.client,
         &ctx.request,
         &ctx.url,
@@ -1176,7 +1327,7 @@ impl fmt::Display for SendError {
 
 /// Sends a request to `url`, following redirects by hand. Captured headers the engine
 /// controls are left out, and credentials are only sent to the request's own origin.
-/// Returns the response and the method its request was sent with.
+/// Returns the response, the method its request was sent with, and the redirects followed.
 async fn send(
     client: &reqwest::Client,
     request: &Request,
@@ -1184,9 +1335,10 @@ async fn send(
     mut method: Method,
     range: Option<RequestedRange>,
     if_range: Option<&str>,
-) -> Result<(Response, Method), SendError> {
+) -> Result<(Response, Method, Vec<Redirect>), SendError> {
     let origin = Url::parse(&request.url).ok();
     let mut url = url.to_string();
+    let mut redirects = Vec::new();
     for _ in 0..=MAX_REDIRECTS {
         let target = Url::parse(&url).ok();
         let same_site = match (&origin, &target) {
@@ -1232,17 +1384,21 @@ async fn send(
         match hop {
             Some(hop) => {
                 url = hop.url.to_string();
+                redirects.push(Redirect {
+                    status: response.status().as_u16(),
+                    to: url.clone(),
+                });
                 if hop.switch_to_get {
                     method = Method::Get;
                 }
             }
-            None => return Ok((response, method)),
+            None => return Ok((response, method, redirects)),
         }
     }
     Err(SendError::TooManyRedirects)
 }
 
-fn remote_info(response: &Response, final_method: Method) -> RemoteInfo {
+fn remote_info(response: &Response, final_method: Method, redirects: Vec<Redirect>) -> RemoteInfo {
     let headers = response.headers();
     let (total, resumable) = if response.status().as_u16() == 206 {
         let range = header_text(headers, header::CONTENT_RANGE)
@@ -1266,6 +1422,7 @@ fn remote_info(response: &Response, final_method: Method) -> RemoteInfo {
             .get(header::CONTENT_DISPOSITION)
             .map(|v| decode_header_bytes(v.as_bytes())),
         final_method,
+        redirects,
     }
 }
 
@@ -1383,4 +1540,35 @@ fn write_all_at(file: &File, mut buf: &[u8], mut offset: u64) -> std::io::Result
         offset += n as u64;
     }
     Ok(())
+}
+
+/// "bytes 1,048,576–2,097,151" for the log.
+fn range_text(segment: &Segment) -> String {
+    format!("bytes {}–{}", segment.pos(), segment.end)
+}
+
+/// "1.5 MB" for the log.
+fn bytes(n: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut value = n as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{n} B")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+/// "3 s" or "0.5 s" for the log.
+fn seconds(delay: Duration) -> String {
+    let secs = delay.as_secs_f64();
+    if secs < 10.0 && secs.fract() != 0.0 {
+        format!("{secs:.1} s")
+    } else {
+        format!("{} s", secs.round())
+    }
 }

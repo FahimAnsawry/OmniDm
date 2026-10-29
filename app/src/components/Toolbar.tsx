@@ -6,6 +6,7 @@ import { Icon, type IconName } from "./Icon";
 
 type Props = {
   onAdd: () => void;
+  onSettings: () => void;
   canResume: boolean;
   canPause: boolean;
   canDelete: boolean;
@@ -73,6 +74,15 @@ export function Toolbar(props: Props) {
             className="w-56 rounded-md border border-neutral-300 bg-white py-1 pr-2 pl-7 text-[13px] placeholder:text-neutral-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/30 focus:outline-none dark:border-neutral-700 dark:bg-neutral-950"
           />
         </label>
+        <button
+          type="button"
+          onClick={props.onSettings}
+          aria-label="Settings"
+          title="Settings"
+          className="ml-1 rounded-md p-1.5 text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+        >
+          <Icon name="settings" className="size-[18px]" />
+        </button>
       </div>
     </div>
   );

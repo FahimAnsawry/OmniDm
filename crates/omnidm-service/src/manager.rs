@@ -7,6 +7,8 @@
 mod asking;
 mod bulk;
 mod categories;
+mod details;
+mod limits;
 mod queues;
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -100,6 +102,10 @@ struct Inner {
     after_queue: Mutex<Option<CancellationToken>>,
     /// Captures wait for the user's answer instead of starting at once.
     ask_first: AtomicBool,
+    /// The settings that can change while running (see `limits`).
+    limits: Mutex<limits::Limits>,
+    /// Each download's latest engine report and log (see `details`).
+    details: Mutex<HashMap<i64, details::Live>>,
 }
 
 /// Opens the app's window.
@@ -173,6 +179,7 @@ impl Manager {
         let client = omnidm_net::download_client()
             .map_err(|e| StoreError::Corrupt(format!("can't create the HTTP client: {e}")))?;
         let (updates, _) = broadcast::channel(1024);
+        let limits = limits::Limits::from(&config);
         Ok(Self {
             inner: Arc::new(Inner {
                 config,
@@ -186,6 +193,8 @@ impl Manager {
                 schedules_changed: tokio::sync::Notify::new(),
                 after_queue: Mutex::new(None),
                 ask_first: AtomicBool::new(false),
+                limits: Mutex::new(limits),
+                details: Mutex::new(HashMap::new()),
             }),
         })
     }
@@ -304,17 +313,14 @@ impl Manager {
             .content_type
             .as_deref()
             .or(capture.mime.as_deref());
-        let (category, dir) = self.place(
-            &name,
-            mime,
-            &first.info.final_url,
-            &inner.config.downloads_dir,
-        );
+        let (category, dir) =
+            self.place(&name, mime, &first.info.final_url, &self.downloads_folder());
         let id = match self.record_capture(&capture, &prepared, &dir, Some(name.clone()), category)
         {
             Ok(id) => id,
             Err(e) => return rejected(RejectReason::NotAccepting, e.to_string()),
         };
+        self.note(id, "Taken over from the browser");
         let size = first.info.total;
         let resumable = first.info.resumable;
         let pending = Pending {
@@ -353,7 +359,7 @@ impl Manager {
                     &guess,
                     capture.mime.as_deref(),
                     url,
-                    &self.inner.config.downloads_dir,
+                    &self.downloads_folder(),
                 );
                 match self.record_capture(&capture, &prepared, &dir, name.clone(), category) {
                     Ok(id) => {
@@ -552,6 +558,11 @@ impl Manager {
             }
             None => None,
         };
+        match (&fresh, &saved) {
+            (Some(_), _) => self.note(id, "Got fresh cookies from the browser"),
+            (None, Some(_)) => self.note(id, "Using the saved cookies"),
+            (None, None) => {}
+        }
         let cookies: Vec<BrowserCookie> = match (&fresh, &saved) {
             (Some(fresh), _) => fresh.clone(),
             (None, Some(saved)) => serde_json::from_slice(saved).unwrap_or_default(),
@@ -588,6 +599,11 @@ impl Manager {
 
     /// Every download, oldest first.
     pub fn list(&self) -> Vec<DownloadSummary> {
+        self.summaries(None)
+    }
+
+    /// The summaries of every download, or of just `only`.
+    fn summaries(&self, only: Option<DownloadId>) -> Vec<DownloadSummary> {
         let asking: HashSet<i64> = self
             .inner
             .state
@@ -598,7 +614,13 @@ impl Manager {
             .copied()
             .collect();
         let store = self.inner.store.lock().unwrap();
-        let Ok(records) = store.list_downloads() else {
+        let records = match only {
+            Some(id) => store
+                .get_download(id)
+                .map(|found| found.into_iter().collect()),
+            None => store.list_downloads(),
+        };
+        let Ok(records) = records else {
             return Vec::new();
         };
         let queue_names: HashMap<QueueId, String> = store
@@ -681,7 +703,7 @@ impl Manager {
 
     fn enqueue(&self, pending: Pending) {
         let mut state = self.inner.state.lock().unwrap();
-        if state.has_free_slot(self.inner.config.max_active) {
+        if state.has_free_slot(self.max_active()) {
             drop(state);
             self.start_now(pending);
         } else {
@@ -703,9 +725,10 @@ impl Manager {
     /// Runs `pending` (already counted as running) on its own thread until it ends.
     fn run(&self, pending: Pending, cancel: CancellationToken) {
         let mut config = self.inner.config.engine.clone();
-        if let Some(connections) = pending.connections {
-            config.ramp.max_connections = connections.clamp(1, omnidm_core::ramp::HARD_CAP);
-        }
+        config.ramp.max_connections = pending
+            .connections
+            .unwrap_or_else(|| self.max_connections())
+            .clamp(1, omnidm_core::ramp::HARD_CAP);
         let id = pending.id;
         let job = Job {
             database: self.inner.database.clone(),
@@ -719,6 +742,7 @@ impl Manager {
             config,
             cancel,
         };
+        self.note(id, "Started");
         let manager = self.clone();
         let runtime = tokio::runtime::Handle::current();
         // The engine's future holds the job's database connection, which may not move
@@ -742,6 +766,7 @@ impl Manager {
                         connections,
                     }));
                 }
+                manager.engine_event(id, event);
             }));
             let (status, path, error) = match result {
                 Ok(JobOutcome::Completed(path)) => (
@@ -755,6 +780,20 @@ impl Manager {
                 }
                 Err(e) => (FinishStatus::Failed, None, Some(e.to_string())),
             };
+            manager.note(
+                id,
+                match (status, &path, &error) {
+                    (FinishStatus::Completed, Some(path), _) => {
+                        format!("Completed: saved as {path}")
+                    }
+                    (FinishStatus::Completed, None, _) => "Completed".into(),
+                    (FinishStatus::Paused, _, Some(error)) => format!("Paused: {error}"),
+                    (FinishStatus::Paused, _, None) => "Paused".into(),
+                    (FinishStatus::Failed, _, error) => {
+                        format!("Failed: {}", error.as_deref().unwrap_or("unknown error"))
+                    }
+                },
+            );
             manager.next(id, || manager.finished(id, status, path, error));
         });
     }
@@ -770,7 +809,7 @@ impl Manager {
             if let Some(run) = queue.and_then(|q| state.queues.get_mut(&q)) {
                 run.active.remove(&id);
             }
-            let next = if queue.is_none() && state.has_free_slot(self.inner.config.max_active) {
+            let next = if queue.is_none() && state.has_free_slot(self.max_active()) {
                 state.waiting.pop_front()
             } else {
                 None

@@ -4,7 +4,7 @@
 //! user says where to save it and whether to start now or later in a queue. Also the
 //! app's saved settings.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
@@ -49,11 +49,6 @@ impl Manager {
             .map_err(|e| e.to_string())
     }
 
-    /// Where downloads go when their category has no folder of its own.
-    pub fn downloads_folder(&self) -> &Path {
-        &self.inner.config.downloads_dir
-    }
-
     /// The category a link belongs to by its name (`file_name`, else the end of the URL),
     /// and the folder it would be saved in. Nothing is created.
     pub fn suggest_place(&self, url: &str, file_name: Option<&str>) -> (Option<String>, PathBuf) {
@@ -66,10 +61,10 @@ impl Manager {
                     .settings
                     .save_dir
                     .map(PathBuf::from)
-                    .unwrap_or_else(|| self.downloads_folder().to_path_buf());
+                    .unwrap_or_else(|| self.downloads_folder());
                 (Some(category.settings.name), folder)
             }
-            None => (None, self.downloads_folder().to_path_buf()),
+            None => (None, self.downloads_folder()),
         }
     }
 
@@ -115,6 +110,7 @@ impl Manager {
                 about: about.clone(),
             },
         );
+        self.note(id, "Waiting for your answer");
         let manager = self.clone();
         let wait = tokio::time::sleep(PROBE_KEPT);
         tokio::spawn(async move {
@@ -164,6 +160,15 @@ impl Manager {
                 return Err(e);
             }
         };
+        let name = held.pending.file_name.clone().unwrap_or_default();
+        let folder = held.pending.dir.display().to_string();
+        match &answer.queue {
+            Some(queue_name) => self.note(
+                id,
+                format!("Saving as {name} in {folder}, later in {queue_name}"),
+            ),
+            None => self.note(id, format!("Saving as {name} in {folder}")),
+        }
         match queue {
             Some(queue) => {
                 // The kept response is dropped; the queue starts it afresh.
@@ -236,6 +241,8 @@ impl Manager {
             .lock()
             .unwrap()
             .delete_download(DownloadId(id))
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+        self.forget_details(id);
+        Ok(())
     }
 }

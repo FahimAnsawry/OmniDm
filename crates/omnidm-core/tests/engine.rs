@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use omnidm_core::engine::{
     Checkpointer, Download, EngineConfig, EngineError, Event, Method, Outcome, Probe, RemoteInfo,
-    Request, Resume, RetryPolicy, download, probe,
+    Request, Resume, RetryPolicy, SegmentState, download, probe,
 };
 use omnidm_core::{RampMode, RampPolicy, Segment, SegmentId, SplitPolicy};
 use omnidm_net::cookies::{CookieJar, Url};
@@ -157,6 +157,7 @@ fn resume_info(server: &TestServer, path: &str, total: u64, etag: Option<&str>) 
         content_type: Some("application/octet-stream".into()),
         content_disposition: None,
         final_method: Method::Get,
+        redirects: vec![],
     }
 }
 
@@ -487,6 +488,93 @@ async fn events_report_the_probe_and_reach_the_full_size() {
         })
         .expect("at least one progress event");
     assert_eq!(last, (MIB, Some(MIB)));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn events_show_each_segment_and_log_what_happened() {
+    let spec = FileSpec::new(2 * MIB).etag("v1").throttle(4 * MIB);
+    let server = TestServer::start().await.unwrap();
+    server.set_file("/f.bin", spec);
+
+    let run = run(&server, "/f.bin", fast_config(4)).await;
+
+    assert!(run.result.is_ok(), "{:?}", run.result);
+    let snapshots: Vec<&Vec<SegmentState>> = run
+        .events
+        .iter()
+        .filter_map(|e| match e {
+            Event::Segments(segments) => Some(segments),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        snapshots
+            .iter()
+            .any(|s| s.iter().filter(|seg| seg.active).count() > 1),
+        "several connections at some point"
+    );
+    assert!(
+        snapshots
+            .iter()
+            .any(|s| s.iter().filter(|seg| seg.active && seg.speed > 0).count() > 1),
+        "several connections with a speed: {:?}",
+        snapshots
+            .iter()
+            .map(|s| s
+                .iter()
+                .filter(|g| g.active)
+                .map(|g| g.speed)
+                .collect::<Vec<_>>())
+            .collect::<Vec<_>>()
+    );
+    let last = snapshots.last().expect("segment snapshots");
+    assert_eq!(last.iter().map(|s| s.written).sum::<u64>(), 2 * MIB);
+    assert!(
+        last.iter()
+            .all(|s| s.written == s.end - s.start + 1 && !s.active)
+    );
+    // Together the segments cover the file once.
+    let mut sorted: Vec<_> = last.iter().map(|s| (s.start, s.end)).collect();
+    sorted.sort();
+    assert_eq!(sorted.first().unwrap().0, 0);
+    assert_eq!(sorted.last().unwrap().1, 2 * MIB - 1);
+    assert!(sorted.windows(2).all(|w| w[0].1 + 1 == w[1].0));
+
+    let log: Vec<&str> = run
+        .events
+        .iter()
+        .filter_map(|e| match e {
+            Event::Log(line) => Some(line.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(log[0].starts_with("The server sent 2.0 MB"), "{log:?}");
+    assert!(
+        log.iter()
+            .any(|l| l.starts_with("Opened connection 2 for bytes")),
+        "{log:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_retry_is_logged() {
+    let spec = FileSpec::new(MIB).etag("v1").drop_after(256 * KIB, 1);
+    let server = TestServer::start().await.unwrap();
+    server.set_file("/f.bin", spec);
+
+    let run = run(&server, "/f.bin", fast_config(1)).await;
+
+    assert!(run.result.is_ok(), "{:?}", run.result);
+    assert!(
+        run.events
+            .iter()
+            .any(|e| matches!(e, Event::Log(line) if line.starts_with("A connection failed"))),
+        "{:?}",
+        run.events
+            .iter()
+            .filter(|e| matches!(e, Event::Log(_)))
+            .collect::<Vec<_>>()
+    );
 }
 
 // --- resume, changed files, pause ---
@@ -1105,6 +1193,15 @@ async fn a_redirect_chain_is_followed_and_segments_go_to_the_final_url() {
     assert_eq!(result.unwrap(), Outcome::Completed { size: 3 * MIB });
     assert!(data == spec.bytes(0, spec.size as usize));
     assert_eq!(recorder.probed[0].final_url, server.url("/real.bin"));
+    let hops: Vec<(u16, String)> = recorder.probed[0]
+        .redirects
+        .iter()
+        .map(|r| (r.status, r.to.clone()))
+        .collect();
+    assert_eq!(
+        hops,
+        [(301, server.url("/middle")), (302, server.url("/real.bin"))]
+    );
     let paths: Vec<String> = server.requests().into_iter().map(|r| r.path).collect();
     assert_eq!(
         paths.iter().filter(|p| *p == "/start").count(),
@@ -1399,6 +1496,7 @@ async fn a_resumed_post_download_posts_again() {
     let resume = Resume {
         info: RemoteInfo {
             final_method: Method::Post,
+            redirects: vec![],
             ..resume_info(&server, "/dl", 2 * MIB, Some("v1"))
         },
         segments,

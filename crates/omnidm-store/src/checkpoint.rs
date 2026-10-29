@@ -4,7 +4,7 @@
 //! stored download back into the engine's resume state.
 
 use omnidm_core::Segment;
-use omnidm_core::engine::{Checkpointer, RemoteInfo, Resume};
+use omnidm_core::engine::{Checkpointer, Redirect, RemoteInfo, Resume};
 
 use crate::{DownloadId, DownloadRecord, ProbeResult, Store};
 
@@ -26,6 +26,12 @@ impl Checkpointer for StoreCheckpointer<'_> {
             last_modified: info.last_modified.clone(),
             resumable: info.resumable,
             final_method: info.final_method,
+            content_type: info.content_type.clone(),
+            redirects: info
+                .redirects
+                .iter()
+                .map(|r| (r.status, r.to.clone()))
+                .collect(),
         };
         self.store
             .record_probe(self.id, &probe)
@@ -49,9 +55,17 @@ pub fn resume_from(record: &DownloadRecord, segments: Vec<Segment>) -> Option<Re
             etag: record.etag.clone(),
             last_modified: record.last_modified.clone(),
             resumable: record.resumable,
-            content_type: None,
+            content_type: record.content_type.clone(),
             content_disposition: None,
             final_method: record.final_method.unwrap_or(record.method),
+            redirects: record
+                .redirects
+                .iter()
+                .map(|(status, to)| Redirect {
+                    status: *status,
+                    to: to.clone(),
+                })
+                .collect(),
         },
         segments,
     })

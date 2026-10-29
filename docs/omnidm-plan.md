@@ -584,7 +584,7 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 - [ ] Settings wired to the store and live-applied.
 - [ ] Site login: Basic and Digest auth, a username/password dialog on `401`, saved per site in Windows Credential Manager. The test server gets auth switches.
 - **Done when:** every engine feature is reachable from the UI. 500 downloads in the list scroll smoothly while 10 are running.
-- Steps (planned 2026-10-29): 1 main window; 2 Add download dialog, capture prompt, notifications; 3 queues and scheduler screen (with the wake-timer warning); 4 Settings (categories, autostart, clipboard monitor, live-applied); 5 Details view; 6 site login and "ignore certificate errors"; 7 the extension's "Install OmniDm" notice, then the live tests (sleep/wake, Edge).
+- Steps (planned 2026-10-29): 1 main window; 2 Add download dialog, capture prompt, notifications; 3 queues and scheduler screen (with the wake-timer warning) — dropped by the user (2026-10-29): queues and schedules stay CLI-only (`omnidm queue …`), plus Start/Stop queue in the toolbar, and there is no wake-timer warning; 4 Settings (categories, autostart, clipboard monitor, live-applied); 5 Details view; 6 site login and "ignore certificate errors"; 7 the extension's "Install OmniDm" notice, then the live tests (sleep/wake, Edge).
 - Step 1 (2026-10-29): main window.
   - Toolbar (Resume, Pause, Delete; Start/Stop queue when a queue is shown; search). Sidebar: All, Downloading, Paused, Completed, Failed, the queues (a dot when running) and the categories, each with a count. Status bar with the total speed.
   - List: name, size, progress, speed, time left, status, added. Click a header to sort (then reverse, then back to the view's own order: newest first, or the queue's order). Only the rows in view are drawn, so 500 rows scroll smoothly (checked with 500 made-up downloads).
@@ -600,6 +600,18 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
   - A held capture shows as "Asking you" in the list. If OmniDm closes first, it is left paused.
   - Add download (toolbar button, Ctrl+N): link (taken from the clipboard when a link was copied), file name, connections, folder (from the link's category until the user picks one), "Download now" or "Later" in a queue. No checksum field: the engine doesn't check checksums yet.
   - Windows notifications when a download completes or fails, unless the list window is in front. A `notify_finished` setting turns them off (its switch comes with step 4). In a development build Windows labels them "PowerShell"; the installed app (M7) shows its own name.
+- Step 4 (2026-10-29): Settings (gear button in the toolbar). Every change is saved in the `settings` table and applied at once; the tray's "Ask before downloading" and the Settings page stay in step.
+  - General: downloads folder (made when a download first needs it), start with Windows (`tauri-plugin-autostart`, starts in the tray with `--background`), ask before downloading, clipboard monitor, notifications.
+  - Connections: downloads at once (1–16; raising it starts waiting downloads) and connections per download (1–32, for downloads that start afterwards).
+  - Categories: add, rename, delete (downloads keep their files and lose the category), reorder (the first match wins), and edit extensions, MIME types, sites and folder. Entries are tidied (`.ZIP` → `zip`, `https://Site.com/x` → `site.com`) and checked.
+  - Clipboard monitor (off by default): checks the clipboard every second; a single http(s) link whose name has an extension some category lists opens Add download with it. What is on the clipboard when it is turned on isn't offered.
+  - Not included from §11.1: "Sites" (comes with site login, step 6), "Browser integration" (the extension's own options page covers it) and "Advanced".
+- Step 5 (2026-10-29): Details window (right-click → Details, or double-click / Enter on a running download). One window per download, refreshed twice a second.
+  - Map of pieces: the whole file as one bar, each piece in its place and filled as far as it got (done, downloading, waiting), and a table of pieces with each connection's speed.
+  - Server: the link, each redirect (status and target), where the file comes from, method, file type, size, resumable, ETag, Last-Modified, referrer and the headers sent (`Authorization`, `Proxy-Authorization` and `Cookie` values hidden).
+  - Log: what happened since OmniDm started (started, what the server sent, redirects, each new connection, retries with the reason, a busy server, a refused link, slow pieces asked for twice, cookies, paused, completed or failed). Kept in memory, at most 500 lines per download; not saved.
+  - Engine: new `Event::Segments` (every piece with its state and speed, each tick) and `Event::Log`; `RemoteInfo.redirects`. Schema version 6 stores each download's redirects and `Content-Type` (the redirect chain postponed from M2).
+  - A piece's speed shows once its connection has written to disk (every second by default).
 
 ### M6: Media
 - [ ] HLS and DASH parsers, variant picker, AES-128, FFmpeg adapter.

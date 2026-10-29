@@ -10,6 +10,7 @@ import { AfterQueueBanner } from "./components/AfterQueueBanner";
 import { ContextMenu, type MenuItem } from "./components/ContextMenu";
 import { DeleteDialog } from "./components/DeleteDialog";
 import { DownloadTable } from "./components/DownloadTable";
+import { SettingsPage } from "./components/SettingsPage";
 import { Icon } from "./components/Icon";
 import { Sidebar } from "./components/Sidebar";
 import { Toolbar } from "./components/Toolbar";
@@ -38,13 +39,23 @@ function App() {
   const [deleting, setDeleting] = useState<Row[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [afterQueue, setAfterQueue] = useState<AfterQueue | null>(null);
-  const [adding, setAdding] = useState(false);
+  /** The Add download dialog, with a copied link when the clipboard monitor opened it. */
+  const [adding, setAdding] = useState<{ url?: string } | null>(null);
+  const [page, setPage] = useState<"downloads" | "settings">("downloads");
+
+  useEffect(() => {
+    const stop = listen<string>("clipboard-link", ({ payload }) => {
+      setPage("downloads");
+      setAdding({ url: payload });
+    });
+    return () => void stop.then((f) => f());
+  }, []);
 
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
         event.preventDefault();
-        setAdding(true);
+        setAdding((current) => current ?? {});
       }
     };
     window.addEventListener("keydown", key);
@@ -95,9 +106,11 @@ function App() {
     run(api.resume(targets.filter((r) => canResume(r.status)).map((r) => r.downloadId)));
   const pause = (targets: Row[]) =>
     run(api.pause(targets.filter((r) => isActive(r.status)).map((r) => r.downloadId)));
+  /** Double-click or Enter: open a finished file, continue a stopped one, or watch a running one. */
   const open = (row: Row) => {
     if (row.status === "completed") run(api.openFile(row.downloadId));
     else if (canResume(row.status)) resume([row]);
+    else run(api.openDetails(row.downloadId));
   };
 
   const menuItems = (): MenuItem[] => {
@@ -114,6 +127,12 @@ function App() {
         icon: "folder",
         disabled: !one,
         onSelect: () => one && run(api.showInFolder(one.downloadId)),
+      },
+      {
+        label: "Details",
+        icon: "details",
+        disabled: !one,
+        onSelect: () => one && run(api.openDetails(one.downloadId)),
       },
       "separator",
       { label: "Resume", icon: "play", disabled: !chosen.some((r) => canResume(r.status)), onSelect: () => resume(chosen) },
@@ -135,76 +154,85 @@ function App() {
   return (
     <div className="flex h-screen flex-col bg-white font-sans text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       {afterQueue && <AfterQueueBanner notice={afterQueue} onClose={() => setAfterQueue(null)} />}
-      <Toolbar
-        onAdd={() => setAdding(true)}
-        canResume={chosen.some((r) => canResume(r.status))}
-        canPause={chosen.some((r) => isActive(r.status))}
-        canDelete={chosen.length > 0}
-        onResume={() => resume(chosen)}
-        onPause={() => pause(chosen)}
-        onDelete={() => setDeleting(chosen)}
-        queue={queue}
-        onStartQueue={() => queue && run(api.startQueue(queue.name))}
-        onStopQueue={() => queue && run(api.stopQueue(queue.name))}
-        search={search}
-        onSearch={setSearch}
-      />
-      {error && (
-        <div
-          role="alert"
-          className="flex items-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-[13px] text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-100"
-        >
-          <Icon name="failed" className="size-4" />
-          <p className="flex-1">{error}</p>
-          <button type="button" aria-label="Dismiss" onClick={() => setError(null)} className="rounded p-0.5 hover:bg-red-100 dark:hover:bg-red-900">
-            <Icon name="close" className="size-4" />
-          </button>
-        </div>
-      )}
-      <div className="flex min-h-0 flex-1">
-        <Sidebar
-          rows={rows}
-          queues={queues}
-          categories={categories}
-          view={view}
-          onView={(v) => {
-            setView(v);
-            setSort(null);
-          }}
-        />
-        <main className="flex min-w-0 flex-1 flex-col">
-          <DownloadTable
-            rows={shown}
-            empty={rows.length === 0}
-            selected={selected}
-            onSelect={setSelected}
-            sort={sort}
-            onSort={setSort}
-            onOpen={open}
+      {page === "settings" ? (
+        <SettingsPage categories={categories} onChanged={refresh} onClose={() => setPage("downloads")} />
+      ) : (
+        <>
+          <Toolbar
+            onAdd={() => setAdding({})}
+            onSettings={() => setPage("settings")}
+            canResume={chosen.some((r) => canResume(r.status))}
+            canPause={chosen.some((r) => isActive(r.status))}
+            canDelete={chosen.length > 0}
+            onResume={() => resume(chosen)}
+            onPause={() => pause(chosen)}
             onDelete={() => setDeleting(chosen)}
-            onContextMenu={(_row, x, y) => setMenu({ x, y })}
+            queue={queue}
+            onStartQueue={() => queue && run(api.startQueue(queue.name))}
+            onStopQueue={() => queue && run(api.stopQueue(queue.name))}
+            search={search}
+            onSearch={setSearch}
           />
-          <footer className="flex items-center gap-4 border-t border-neutral-200 bg-neutral-50 px-4 py-1.5 text-xs text-neutral-500 tabular-nums dark:border-neutral-800 dark:bg-neutral-900">
-            <span>
-              {shown.length === rows.length ? `${rows.length} downloads` : `${shown.length} of ${rows.length} downloads`}
-            </span>
-            {chosen.length > 1 && <span>{chosen.length} selected</span>}
-            {running.length > 0 && (
-              <span className="ml-auto">
-                {running.length} downloading · {formatSpeed(totalSpeed)}
-              </span>
-            )}
-          </footer>
-        </main>
-      </div>
+          {error && (
+            <div
+              role="alert"
+              className="flex items-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-[13px] text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-100"
+            >
+              <Icon name="failed" className="size-4" />
+              <p className="flex-1">{error}</p>
+              <button type="button" aria-label="Dismiss" onClick={() => setError(null)} className="rounded p-0.5 hover:bg-red-100 dark:hover:bg-red-900">
+                <Icon name="close" className="size-4" />
+              </button>
+            </div>
+          )}
+          <div className="flex min-h-0 flex-1">
+            <Sidebar
+              rows={rows}
+              queues={queues}
+              categories={categories}
+              view={view}
+              onView={(v) => {
+                setView(v);
+                setSort(null);
+              }}
+            />
+            <main className="flex min-w-0 flex-1 flex-col">
+              <DownloadTable
+                rows={shown}
+                empty={rows.length === 0}
+                selected={selected}
+                onSelect={setSelected}
+                sort={sort}
+                onSort={setSort}
+                onOpen={open}
+                onDelete={() => setDeleting(chosen)}
+                onContextMenu={(_row, x, y) => setMenu({ x, y })}
+              />
+              <footer className="flex items-center gap-4 border-t border-neutral-200 bg-neutral-50 px-4 py-1.5 text-xs text-neutral-500 tabular-nums dark:border-neutral-800 dark:bg-neutral-900">
+                <span>
+                  {shown.length === rows.length ? `${rows.length} downloads` : `${shown.length} of ${rows.length} downloads`}
+                </span>
+                {chosen.length > 1 && <span>{chosen.length} selected</span>}
+                {running.length > 0 && (
+                  <span className="ml-auto">
+                    {running.length} downloading · {formatSpeed(totalSpeed)}
+                  </span>
+                )}
+              </footer>
+            </main>
+          </div>
+        </>
+      )}
       {menu && chosen.length > 0 && (
         <ContextMenu x={menu.x} y={menu.y} items={menuItems()} onClose={() => setMenu(null)} />
       )}
       {adding && (
         <AddDialog
+          key={adding.url ?? ""}
           queues={queues}
+          initialUrl={adding.url}
           onClose={() => {
-            setAdding(false);
+            setAdding(null);
             refresh();
           }}
         />

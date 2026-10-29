@@ -20,9 +20,18 @@ function isWebLink(text: string): boolean {
   }
 }
 
-export function AddDialog({ queues, onClose }: { queues: QueueSummary[]; onClose: () => void }) {
+export function AddDialog({
+  queues,
+  initialUrl,
+  onClose,
+}: {
+  queues: QueueSummary[];
+  /** A link copied while the clipboard monitor was on. */
+  initialUrl?: string;
+  onClose: () => void;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl ?? "");
   const [name, setName] = useState("");
   const [folder, setFolder] = useState("");
   /** The user chose the folder; the link's category no longer changes it. */

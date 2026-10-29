@@ -5,7 +5,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AskAbout } from "../../../protocol/ts/AskAbout";
 import type { CaptureAnswer } from "../../../protocol/ts/CaptureAnswer";
+import type { CategoryEdit } from "../../../protocol/ts/CategoryEdit";
 import type { CategorySummary } from "../../../protocol/ts/CategorySummary";
+import type { DownloadDetails } from "../../../protocol/ts/DownloadDetails";
 import type { DownloadSummary } from "../../../protocol/ts/DownloadSummary";
 import type { QueueSummary } from "../../../protocol/ts/QueueSummary";
 
@@ -20,6 +22,18 @@ export type NewDownload = {
 };
 
 export type Place = { category?: string; folder: string };
+
+export type AppSettings = {
+  downloadsFolder: string;
+  /** Downloads outside queues that run at once. */
+  maxActive: number;
+  /** Connections one download may use. */
+  maxConnections: number;
+  askBeforeDownload: boolean;
+  notifyFinished: boolean;
+  clipboardMonitor: boolean;
+  startWithWindows: boolean;
+};
 
 export const api = {
   listDownloads: () => invoke<DownloadSummary[]>("list_downloads"),
@@ -43,6 +57,14 @@ export const api = {
   answerCapture: (answer: CaptureAnswer) => invoke<void>("answer_capture", { answer }),
   cancelCapture: (id: number) => invoke<void>("cancel_capture", { id }),
   setAskBeforeDownload: (ask: boolean) => invoke<void>("set_ask_before_download", { ask }),
+  getSettings: () => invoke<AppSettings>("get_settings"),
+  saveSettings: (settings: AppSettings) => invoke<AppSettings>("save_settings", { settings }),
+  createCategory: (edit: CategoryEdit) => invoke<number>("create_category", { edit }),
+  editCategory: (id: number, edit: CategoryEdit) => invoke<void>("edit_category", { id, edit }),
+  deleteCategory: (id: number) => invoke<void>("delete_category", { id }),
+  moveCategory: (id: number, index: number) => invoke<void>("move_category", { id, index }),
+  openDetails: (id: number) => invoke<void>("open_details", { id }),
+  details: (id: number) => invoke<DownloadDetails | null>("download_details", { id }),
 };
 
 /** Tauri commands reject with the Rust error string. */

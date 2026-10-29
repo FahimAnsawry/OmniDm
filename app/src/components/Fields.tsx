@@ -26,14 +26,19 @@ export function FolderField({
   id,
   value,
   onChange,
+  placeholder,
+  onBlur,
 }: {
   id: string;
   value: string;
-  onChange: (folder: string) => void;
+  /** `picked` is true for a folder chosen with Browse (not typed). */
+  onChange: (folder: string, picked?: boolean) => void;
+  placeholder?: string;
+  onBlur?: () => void;
 }) {
   const browse = async () => {
     const picked = await open({ directory: true, defaultPath: value || undefined, title: "Save in" });
-    if (typeof picked === "string") onChange(picked);
+    if (typeof picked === "string") onChange(picked, true);
   };
   return (
     <div className="flex gap-2">
@@ -41,6 +46,8 @@ export function FolderField({
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        placeholder={placeholder}
         spellCheck={false}
         className={inputClass}
       />

@@ -399,6 +399,98 @@ pub struct DownloadSummary {
     pub completed_at: Option<i64>,
 }
 
+/// Everything about one download, for its Details window.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct DownloadDetails {
+    pub summary: DownloadSummary,
+    /// The URL after redirects, once the server has been asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub final_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub etag: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_modified: Option<String>,
+    /// The server can split and resume it.
+    pub resumable: bool,
+    /// `GET` or `POST`.
+    pub method: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub referrer: Option<String>,
+    /// The headers sent with each request; secrets such as `Authorization` are hidden.
+    pub request_headers: Vec<Header>,
+    pub redirects: Vec<RedirectHop>,
+    /// The file's pieces, in file order.
+    pub segments: Vec<SegmentInfo>,
+    /// Bytes per second, while running.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number")]
+    pub speed: Option<u64>,
+    pub connections: u32,
+    /// What happened since OmniDm started, oldest first.
+    pub log: Vec<LogLine>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct RedirectHop {
+    pub status: u16,
+    /// Where the server sent the request.
+    pub url: String,
+}
+
+/// One piece of a download.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct SegmentInfo {
+    #[ts(type = "number")]
+    pub start: u64,
+    /// Its last byte (inclusive).
+    #[ts(type = "number")]
+    pub end: u64,
+    #[ts(type = "number")]
+    pub written: u64,
+    /// A connection is downloading it now.
+    pub active: bool,
+    /// Bytes per second.
+    #[ts(type = "number")]
+    pub speed: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct LogLine {
+    /// Unix milliseconds.
+    #[ts(type = "number")]
+    pub at: i64,
+    pub text: String,
+}
+
+/// A category as the user edits it: a new one, or new values for an existing one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, optional_fields)]
+pub struct CategoryEdit {
+    pub name: String,
+    /// File extensions; a leading dot is dropped.
+    #[serde(default)]
+    pub extensions: Vec<String>,
+    #[serde(default)]
+    pub mime_types: Vec<String>,
+    /// Sites; `https://` and paths are dropped.
+    #[serde(default)]
+    pub hosts: Vec<String>,
+    /// Absent or blank: the downloads folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, optional_fields)]

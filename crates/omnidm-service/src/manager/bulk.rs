@@ -109,6 +109,7 @@ impl Manager {
             .unwrap()
             .delete_download(DownloadId(id))
             .map_err(|e| e.to_string())?;
+        self.forget_details(id);
         let unfinished = file
             .file_name()
             .is_some_and(|n| n.to_string_lossy().ends_with(PART_SUFFIX));

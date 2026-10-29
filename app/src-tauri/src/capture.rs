@@ -97,5 +97,7 @@ pub fn apply(app: &AppHandle, ask: bool) -> Result<(), String> {
     if let Some(item) = app.try_state::<AskMenuItem>() {
         let _ = item.0.set_checked(ask);
     }
+    // An open Settings page shows the change.
+    let _ = app.emit("settings-changed", ());
     Ok(())
 }
