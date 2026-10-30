@@ -31,3 +31,6 @@ Thumbs.db
 /docs/idm-analysis.md
 /docs/idm-analysis-1.md
 /docs/evidence/
+
+# The host copied in for the installer (scripts/build-setup.ps1)
+/app/src-tauri/binaries/

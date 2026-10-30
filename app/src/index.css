@@ -187,6 +187,13 @@ select optgroup {
     radial-gradient(ellipse 60% 60% at 50% 35%, rgb(18 184 134 / 0.18), transparent),
     #0b0e1a;
 }
+/* The uninstall window: the bottom-right light turns red. */
+.glow-danger {
+  background:
+    radial-gradient(ellipse 75% 75% at 8% 0%, rgb(255 138 76 / 0.2), transparent),
+    radial-gradient(ellipse 85% 85% at 100% 100%, rgb(229 72 77 / 0.16), transparent),
+    #0b0e1a;
+}
 .glow-main {
   background:
     radial-gradient(ellipse 55% 55% at 2% 0%, rgb(255 138 76 / 0.16), transparent),

@@ -3298,6 +3298,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "omnidm-setup"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "omnidm-store"
 version = "0.1.0"
 dependencies = [

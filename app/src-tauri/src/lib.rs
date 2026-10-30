@@ -9,6 +9,7 @@ mod details;
 mod media;
 mod notify;
 mod settings;
+mod uninstall;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -36,6 +37,11 @@ const MAX_ACTIVE: usize = 3;
 const PROGRESS_EVERY: Duration = Duration::from_millis(200);
 
 pub fn run() {
+    // Opened from Windows' Apps list: only the uninstall window, no downloads.
+    if std::env::args().any(|arg| arg == "--uninstall") {
+        uninstall::run();
+        return;
+    }
     // Started by the browser's native messaging host: no window until asked.
     let background = std::env::args().any(|arg| arg == "--background");
     // OMNIDM_PIPE is for development and tests.
