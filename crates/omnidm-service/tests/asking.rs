@@ -120,7 +120,11 @@ async fn a_capture_waits_for_an_answer() {
     assert_eq!(about.file_name, "a.zip");
     assert_eq!(about.size, Some(64 * KIB));
     assert_eq!(about.category.as_deref(), Some("Compressed"));
-    assert_eq!(PathBuf::from(&about.folder), env.downloads.path());
+    // Suggested: the category's folder inside the downloads folder.
+    assert_eq!(
+        PathBuf::from(&about.folder),
+        env.downloads.path().join("Compressed")
+    );
     assert_eq!(PathBuf::from(&about.downloads_folder), env.downloads.path());
     assert!(about.resumable);
 
@@ -130,13 +134,9 @@ async fn a_capture_waits_for_an_answer() {
         "nothing starts before the answer"
     );
     assert_eq!(env.status(id).as_deref(), Some("asking"));
-    assert_eq!(env.manager.asking(), [about]);
-    assert!(
-        std::fs::read_dir(env.downloads.path())
-            .unwrap()
-            .next()
-            .is_none()
-    );
+    assert_eq!(env.manager.asking(), std::slice::from_ref(&about));
+    // The suggested category folder is made, but nothing is written into it yet.
+    assert!(std::fs::read_dir(&about.folder).unwrap().next().is_none());
     assert!(env.manager.resume(id).await.is_err());
 }
 
@@ -167,7 +167,8 @@ async fn the_answer_can_rename_and_move_the_download() {
         .into_iter()
         .find(|d| d.download_id == id)
         .unwrap();
-    assert_eq!(summary.category, None);
+    // No category in the answer: the file's name picks one.
+    assert_eq!(summary.category.as_deref(), Some("Compressed"));
     assert!(env.manager.asking().is_empty());
     // The kept first response was used: the file took one request.
     assert_eq!(env.server.requests().len(), 1);
@@ -304,7 +305,7 @@ async fn settings_and_suggested_places() {
     assert!(!videos.exists(), "nothing is created");
     let (category, folder) = m.suggest_place("https://example.com/get", Some("notes.pdf"));
     assert_eq!(category.as_deref(), Some("Documents"));
-    assert_eq!(folder, env.downloads.path());
+    assert_eq!(folder, env.downloads.path().join("Documents"));
     let (category, _) = m.suggest_place("https://example.com/", None);
     assert_eq!(category, None);
 }

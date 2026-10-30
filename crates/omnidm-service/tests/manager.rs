@@ -166,7 +166,11 @@ async fn a_capture_is_probed_then_downloaded_with_its_cookies_and_referrer() {
     let done = finished(&mut updates, id).await;
     assert_eq!(done.status, FinishStatus::Completed, "{done:?}");
     let path = PathBuf::from(done.path.unwrap());
-    assert_eq!(path, env.downloads.path().join("report.pdf"));
+    // A PDF is a document: it goes to the Documents folder inside the downloads folder.
+    assert_eq!(
+        path,
+        env.downloads.path().join("Documents").join("report.pdf")
+    );
     assert!(std::fs::read(&path).unwrap() == spec.bytes(0, spec.size as usize));
     for request in env.server.requests() {
         assert_eq!(request.header("referer"), Some("https://example.com/page"));

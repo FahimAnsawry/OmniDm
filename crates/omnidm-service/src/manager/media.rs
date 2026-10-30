@@ -191,10 +191,9 @@ impl Manager {
         let name = media_file_name(title, &add.url);
         let sound_only = add.choice.quality.as_ref().is_some_and(|q| {
             q.height.is_none()
-                && manifest
-                    .qualities
-                    .iter()
-                    .any(|mq| mq.height.is_none() && mq.width.is_none() && mq.bandwidth == q.bandwidth)
+                && manifest.qualities.iter().any(|mq| {
+                    mq.height.is_none() && mq.width.is_none() && mq.bandwidth == q.bandwidth
+                })
         });
         let ext_name = if sound_only {
             format!("{}.m4a", name.trim_end_matches(".mp4"))
@@ -209,7 +208,10 @@ impl Manager {
                 }
                 std::fs::create_dir_all(dir)
                     .map_err(|e| format!("can't create the folder: {e}"))?;
-                (self.place(&ext_name, Some(mime), &add.url, dir).0, dir.clone())
+                (
+                    self.place(&ext_name, Some(mime), &add.url, dir).0,
+                    dir.clone(),
+                )
             }
             None => self.place(&ext_name, Some(mime), &add.url, &self.downloads_folder()),
         };

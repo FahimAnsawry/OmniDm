@@ -211,7 +211,8 @@ async fn a_capture_is_answered_and_downloaded() {
             break;
         }
     }
-    let saved = std::fs::read(env.downloads.path().join("a.zip")).unwrap();
+    // A .zip goes to the Compressed folder inside the downloads folder.
+    let saved = std::fs::read(env.downloads.path().join("Compressed").join("a.zip")).unwrap();
     assert!(saved == spec.bytes(0, spec.size as usize));
 }
 

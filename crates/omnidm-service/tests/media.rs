@@ -79,10 +79,16 @@ impl Env {
         std::fs::read(self.downloads.path().join(name)).unwrap()
     }
 
+    /// What the downloads folder holds, leaving out the empty Video category folder that
+    /// is made when the category's place is worked out (these tests save beside it).
     fn files(&self) -> Vec<String> {
         let mut names: Vec<String> = std::fs::read_dir(self.downloads.path())
             .unwrap()
-            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .map(|e| e.unwrap())
+            .filter(|e| {
+                !(e.file_name() == "Video" && std::fs::read_dir(e.path()).unwrap().next().is_none())
+            })
+            .map(|e| e.file_name().to_string_lossy().into_owned())
             .collect();
         names.sort();
         names

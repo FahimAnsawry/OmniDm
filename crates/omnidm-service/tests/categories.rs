@@ -106,11 +106,11 @@ async fn a_capture_goes_to_its_categorys_folder() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn without_a_folder_the_downloads_folder_is_used() {
+async fn without_a_folder_a_subfolder_of_downloads_is_used() {
     let env = env().await;
     env.server.set_file("/b.zip", FileSpec::new(64 * KIB));
     let (file, summary) = env.capture("/b.zip").await;
-    assert_eq!(file, env.downloads.path().join("b.zip"));
+    assert_eq!(file, env.downloads.path().join("Compressed").join("b.zip"));
     assert_eq!(summary.category.as_deref(), Some("Compressed"));
 
     // Set, then cleared again.
@@ -118,7 +118,7 @@ async fn without_a_folder_the_downloads_folder_is_used() {
     env.set_folder("Compressed", None);
     env.server.set_file("/c.zip", FileSpec::new(64 * KIB));
     let (file, _) = env.capture("/c.zip").await;
-    assert_eq!(file, env.downloads.path().join("c.zip"));
+    assert_eq!(file, env.downloads.path().join("Compressed").join("c.zip"));
 }
 
 #[tokio::test(flavor = "multi_thread")]

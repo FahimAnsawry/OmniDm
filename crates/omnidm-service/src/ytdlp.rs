@@ -502,13 +502,21 @@ async fn direct_player(
                 (v.trim(), a.trim())
             } else if is_video {
                 (
-                    if codec_str.is_empty() { "avc1" } else { codec_str },
+                    if codec_str.is_empty() {
+                        "avc1"
+                    } else {
+                        codec_str
+                    },
                     "none",
                 )
             } else {
                 (
                     "none",
-                    if codec_str.is_empty() { "mp4a" } else { codec_str },
+                    if codec_str.is_empty() {
+                        "mp4a"
+                    } else {
+                        codec_str
+                    },
                 )
             };
             let bitrate = item["averageBitrate"]
