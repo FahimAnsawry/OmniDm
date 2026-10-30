@@ -1,0 +1,364 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- "How to install.html" in the release zip. scripts/build-setup.ps1 fills in {{VERSION}}. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install OmniDM</title>
+<style>
+  :root {
+    --bg: #0b0e1a;
+    --panel: #11162a;
+    --panel-2: #161c30;
+    --line: rgb(255 255 255 / 0.08);
+    --text: #f4f6fb;
+    --soft: #c9cfdd;
+    --dim: #8b93a9;
+    --blue: #4a6cff;
+    --blue-soft: #8ea4ff;
+    --sunset: linear-gradient(135deg, #ff8a4c, #ee3f6a);
+    --amber: #f2b84b;
+    --red: #ff6b70;
+    --green: #2fd3a0;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(700px 420px at 0% 0%, rgb(255 120 70 / 0.13), transparent 70%),
+      radial-gradient(800px 500px at 100% 30%, rgb(74 108 255 / 0.12), transparent 70%),
+      var(--bg);
+    background-attachment: fixed;
+    color: var(--text);
+    font: 15px/1.6 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  }
+  main { max-width: 820px; margin: 0 auto; padding: 48px 20px 80px; }
+  a { color: var(--blue-soft); }
+  code, kbd {
+    font: 13px "Cascadia Mono", Consolas, monospace;
+    background: rgb(255 255 255 / 0.07);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 1px 6px;
+    white-space: nowrap;
+  }
+  header { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+  header svg { width: 52px; height: 52px; flex: none; }
+  h1 { margin: 0; font-size: 30px; letter-spacing: -0.02em; line-height: 1.15; }
+  .lead { color: var(--soft); margin: 14px 0 28px; }
+  .version { color: var(--dim); font-size: 14px; font-weight: 500; }
+
+  nav.parts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 40px; }
+  nav.parts a {
+    display: block; padding: 14px 16px; border-radius: 12px;
+    background: rgb(255 255 255 / 0.03); border: 1px solid var(--line);
+    color: var(--text); text-decoration: none;
+  }
+  nav.parts a:hover { border-color: rgb(142 164 255 / 0.5); }
+  nav.parts b { display: block; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--blue-soft); }
+  nav.parts span { font-weight: 600; }
+
+  section.part { margin-top: 56px; }
+  .part-title { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .part-title b { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--blue-soft); }
+  h2 { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+  .part-intro { color: var(--dim); margin: 0 0 22px; }
+
+  ol.steps { list-style: none; counter-reset: step; margin: 0; padding: 0; }
+  ol.steps > li {
+    counter-increment: step;
+    position: relative;
+    padding: 0 0 26px 52px;
+  }
+  ol.steps > li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 0;
+    width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+    background: rgb(74 108 255 / 0.16); border: 1px solid rgb(142 164 255 / 0.45); color: #c7d2ff;
+  }
+  ol.steps > li:not(:last-child)::after {
+    content: ""; position: absolute; left: 16.5px; top: 40px; bottom: 6px;
+    width: 1px; background: var(--line);
+  }
+  ol.steps h3 { margin: 4px 0 4px; font-size: 16px; }
+  ol.steps p { margin: 0 0 6px; color: var(--soft); }
+
+  .note {
+    display: flex; gap: 10px; margin: 10px 0 4px; padding: 10px 14px; border-radius: 10px;
+    background: rgb(242 184 75 / 0.08); border: 1px solid rgb(242 184 75 / 0.3); color: #f3dcae; font-size: 14px;
+  }
+  .note.blue { background: rgb(74 108 255 / 0.08); border-color: rgb(142 164 255 / 0.3); color: #cdd6ff; }
+  .note::before { content: "!"; flex: none; font-weight: 800; }
+  .note.blue::before { content: "i"; font-style: italic; font-family: Georgia, serif; }
+
+  /* Small drawings of the screens. */
+  .shot {
+    margin: 12px 0 4px; max-width: 460px;
+    border-radius: 12px; border: 1px solid rgb(255 255 255 / 0.12);
+    background: var(--panel); overflow: hidden;
+    box-shadow: 0 18px 40px -16px rgb(0 0 0 / 0.7);
+    font-size: 13px;
+  }
+  .shot .bar {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    border-bottom: 1px solid var(--line); color: var(--dim); font-size: 12px;
+  }
+  .shot .bar .dots { margin-left: auto; letter-spacing: 6px; }
+  .shot .body { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .grow { flex: 1; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 8px;
+    border: 1px solid rgb(255 255 255 / 0.12); background: rgb(255 255 255 / 0.05); color: var(--text);
+    font-weight: 600; font-size: 12px;
+  }
+  .btn.primary { background: var(--blue); border-color: transparent; }
+  .hl { outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 8px; box-shadow: 0 0 18px rgb(242 184 75 / 0.45); }
+  .box { width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid rgb(255 255 255 / 0.35); flex: none; }
+  .box.on { background: var(--blue); border-color: var(--blue); position: relative; }
+  .box.on::after { content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  .switch { width: 30px; height: 17px; border-radius: 99px; background: rgb(255 255 255 / 0.18); position: relative; flex: none; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #fff; }
+  .switch.on { background: var(--blue); }
+  .switch.on::after { left: 15px; }
+  .field { padding: 6px 10px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); color: var(--soft); font: 12px Consolas, monospace; }
+  .muted { color: var(--dim); }
+  .smart { background: #1f4e8c; }
+  .smart .body { color: #fff; }
+  .smart .link { color: #fff; text-decoration: underline; }
+  .folder { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; }
+  .folder i { width: 18px; height: 14px; border-radius: 2px 3px 3px 3px; background: #f2c14e; position: relative; flex: none; }
+  .folder i::before { content: ""; position: absolute; top: -3px; left: 0; width: 8px; height: 4px; border-radius: 2px 2px 0 0; background: #f2c14e; }
+  .ext-icon { width: 22px; height: 22px; flex: none; }
+  .badge { font-size: 10px; font-weight: 800; color: #fff; background: var(--red); border-radius: 4px; padding: 0 4px; }
+  .badge.amber { background: var(--amber); color: #1a1205; }
+
+  table.trouble { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  table.trouble td { padding: 12px 10px; border-top: 1px solid var(--line); vertical-align: top; color: var(--soft); }
+  table.trouble td:first-child { width: 38%; color: var(--text); font-weight: 600; }
+  footer { margin-top: 64px; color: var(--dim); font-size: 13px; text-align: center; }
+
+  @media (max-width: 640px) {
+    nav.parts { grid-template-columns: 1fr; }
+    ol.steps > li { padding-left: 46px; }
+    table.trouble td { display: block; width: auto !important; border-top: 0; padding: 4px 0; }
+    table.trouble tr { display: block; border-top: 1px solid var(--line); padding: 10px 0; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="78 70 356 356" aria-hidden="true"><defs><linearGradient id="s" gradientUnits="userSpaceOnUse" x1="106" y1="76" x2="406" y2="420"><stop offset="0" stop-color="#ff8a4c"/><stop offset="1" stop-color="#ee3f6a"/></linearGradient><mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><path d="M172 296L256 380L340 296" fill="none" stroke="#000" stroke-width="96" stroke-linejoin="miter"/></mask></defs><circle cx="256" cy="226" r="122" fill="none" stroke="url(#s)" stroke-width="56" mask="url(#m)"/><path d="M172 296L256 380L340 296" fill="none" stroke="url(#s)" stroke-width="56" stroke-linejoin="miter"/></svg>
+    <div>
+      <h1>Install OmniDM</h1>
+      <div class="version">Version {{VERSION}} · Windows 10 and 11</div>
+    </div>
+  </header>
+  <p class="lead">
+    It takes about 5 minutes. First you install the <b>app</b>, which does the downloading.
+    Then you add the <b>browser extension</b>, which sends your browser's downloads to the app.
+    No administrator rights are needed, and nothing you download leaves your PC.
+  </p>
+
+  <nav class="parts" aria-label="Parts of this guide">
+    <a href="#app"><b>Part 1</b><span>Install the app</span></a>
+    <a href="#chrome"><b>Part 2</b><span>Chrome, Edge or Brave</span></a>
+    <a href="#firefox"><b>Part 3</b><span>Firefox</span></a>
+  </nav>
+
+  <!-- ───────────────────────── Part 1 ───────────────────────── -->
+  <section class="part" id="app">
+    <div class="part-title"><b>Part 1</b><h2>Install the app</h2></div>
+    <p class="part-intro">The app keeps running in the tray (next to the clock) so downloads start at once.</p>
+
+    <ol class="steps">
+      <li>
+        <h3>Unzip the download</h3>
+        <p>Right-click <code>OmniDM-{{VERSION}}.zip</code> and choose <b>Extract All…</b>, then <b>Extract</b>.
+          Don't run the setup from inside the zip.</p>
+        <div class="shot" aria-hidden="true">
+          <div class="bar">OmniDM-{{VERSION}}</div>
+          <div class="body">
+            <div class="folder"><i></i>OmniDM_chrome</div>
+            <div class="folder"><i></i>OmniDM_firefox</div>
+            <div class="folder hl" style="background:rgb(255 255 255 / .04)"><svg class="ext-icon" viewBox="78 70 356 356"><circle cx="256" cy="226" r="122" fill="none" stroke="#ff7a55" stroke-width="56"/></svg>OmniDM-Setup-{{VERSION}}.exe</div>
+            <div class="folder"><span class="ext-icon" style="display:inline-block;border-radius:4px;background:#2b6cd8"></span>How to install.html</div>
+          </div>
+        </div>
+      </li>
+
+      <li>
+        <h3>Run <code>OmniDM-Setup-{{VERSION}}.exe</code></h3>
+        <p>Double-click it. If Windows shows <b>"Windows protected your PC"</b>, click <b>More info</b>, then <b>Run anyway</b>.
+          Windows shows this for new programs that aren't signed with a paid certificate yet.</p>
+        <div class="shot smart" aria-hidden="true">
+          <div class="body">
+            <b style="font-size:16px">Windows protected your PC</b>
+            <span>Microsoft Defender SmartScreen prevented an unrecognized app from starting…</span>
+            <span class="link hl" style="align-self:flex-start;padding:0 4px">More info</span>
+            <div class="row"><span class="grow"></span><span class="btn hl" style="background:#fff;color:#1f4e8c">Run anyway</span><span class="btn" style="background:transparent;color:#fff">Don't run</span></div>
+          </div>
+        </div>
+      </li>
+
+      <li>
+        <h3>Accept the terms and click Next</h3>
+        <p>Tick <b>I accept the terms and conditions</b>. The install folder is fine as it is.</p>
+        <div class="shot" aria-hidden="true">
+          <div class="bar">OmniDM · Setup<span class="dots">– ×</span></div>
+          <div class="body">
+            <b style="font-size:15px">Install OmniDM</b>
+            <span class="muted">Install to</span>
+            <div class="field">C:\Users\you\AppData\Local\OmniDm</div>
+            <div class="row hl" style="padding:2px 4px"><span class="box on"></span>I accept the terms and conditions</div>
+            <div class="row"><span class="grow"></span><span class="btn">Cancel</span><span class="btn primary">Next ⏎</span></div>
+          </div>
+        </div>
+      </li>
+
+      <li>
+        <h3>Choose your options and click Install</h3>
+        <p>Keep <b>Start OmniDM when Windows starts</b> on: then the browser can always hand downloads to it.
+          You can change these later in OmniDM's Settings.</p>
+        <div class="shot" aria-hidden="true">
+          <div class="bar">OmniDM · Setup<span class="dots">– ×</span></div>
+          <div class="body">
+            <b style="font-size:15px">Install options</b>
+            <div class="row"><span class="box on"></span>Desktop shortcut</div>
+            <div class="row"><span class="box on"></span>Start menu shortcut</div>
+            <div class="row hl" style="padding:2px 4px"><span class="box on"></span>Start OmniDM when Windows starts</div>
+            <div class="row"><span class="grow"></span><span class="btn">Back</span><span class="btn primary">Install</span></div>
+          </div>
+        </div>
+      </li>
+
+      <li>
+        <h3>Finish</h3>
+        <p>When it says <b>OmniDM is installed</b>, keep <b>Launch OmniDM now</b> ticked and close the setup.
+          OmniDM opens, and its icon appears in the tray.</p>
+        <div class="note blue"><span>The setup also connects OmniDM to your browsers (it registers with Windows), and adds
+          the <code>omnidm-cli</code> command for terminals and scripts.</span></div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ───────────────────────── Part 2 ───────────────────────── -->
+  <section class="part" id="chrome">
+    <div class="part-title"><b>Part 2</b><h2>Add the extension to Chrome, Edge or Brave</h2></div>
+    <p class="part-intro">The extension isn't in the browser stores, so you add it from its folder. It's the same folder for all three browsers.</p>
+
+    <ol class="steps">
+      <li>
+        <h3>Move the <code>OmniDM_chrome</code> folder somewhere it can stay</h3>
+        <p>For example into <code>Documents</code>. The browser keeps using this folder: if you delete it or move it later,
+          the extension stops working.</p>
+      </li>
+
+      <li>
+        <h3>Open the extensions page</h3>
+        <p>Type this in the address bar and press <kbd>Enter</kbd>:</p>
+        <p>Chrome: <code>chrome://extensions</code> &nbsp;·&nbsp; Edge: <code>edge://extensions</code> &nbsp;·&nbsp; Brave: <code>brave://extensions</code></p>
+      </li>
+
+      <li>
+        <h3>Turn on Developer mode</h3>
+        <p>The switch is at the top right in Chrome and Brave, and on the left side in Edge.</p>
+        <div class="shot" aria-hidden="true">
+          <div class="bar">chrome://extensions</div>
+          <div class="body">
+            <div class="row"><b>Extensions</b><span class="grow"></span><span class="muted">Developer mode</span><span class="switch on hl"></span></div>
+            <div class="row"><span class="btn hl">Load unpacked</span><span class="btn">Pack extension</span><span class="btn">Update</span></div>
+          </div>
+        </div>
+      </li>
+
+      <li>
+        <h3>Click Load unpacked and pick the folder</h3>
+        <p>Choose the <code>OmniDM_chrome</code> folder itself (the one with <code>manifest.json</code> inside), then <b>Select Folder</b>.
+          OmniDM now shows in the list.</p>
+      </li>
+
+      <li>
+        <h3>Pin it to the toolbar</h3>
+        <p>Click the puzzle-piece icon next to the address bar, then the pin next to <b>OmniDM</b>.
+          If the OmniDM icon has no red or amber <span class="badge">!</span>, it's connected to the app.</p>
+        <div class="shot" aria-hidden="true">
+          <div class="bar">Extensions</div>
+          <div class="body">
+            <div class="row"><svg class="ext-icon" viewBox="78 70 356 356"><circle cx="256" cy="226" r="122" fill="none" stroke="#ff7a55" stroke-width="56"/></svg><span class="grow">OmniDM</span><span class="hl" style="padding:0 6px">📌</span></div>
+          </div>
+        </div>
+        <div class="note"><span>Some versions of Chrome show "Disable developer mode extensions" when they start. Close that message;
+          don't click Disable, or OmniDM turns off.</span></div>
+      </li>
+
+      <li>
+        <h3>Try it</h3>
+        <p>Click any download link: OmniDM asks where to save it and downloads it, usually much faster.
+          On a page with a video, point at the video and click OmniDM's <b>Download</b> button in its corner.</p>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ───────────────────────── Part 3 ───────────────────────── -->
+  <section class="part" id="firefox">
+    <div class="part-title"><b>Part 3</b><h2>Add the extension to Firefox</h2></div>
+    <div class="note"><span>Firefox only keeps extensions that Mozilla has signed. Until OmniDM's is, Firefox removes it
+      <b>every time Firefox closes</b>, and you add it again with these steps. Chrome, Edge or Brave work without this limit.</span></div>
+
+    <ol class="steps" style="margin-top:22px">
+      <li>
+        <h3>Open the debugging page</h3>
+        <p>Type <code>about:debugging#/runtime/this-firefox</code> in the address bar and press <kbd>Enter</kbd>.</p>
+      </li>
+      <li>
+        <h3>Click Load Temporary Add-on…</h3>
+        <p>Open the <code>OmniDM_firefox</code> folder and choose the <code>manifest.json</code> file in it.</p>
+        <div class="shot" aria-hidden="true">
+          <div class="bar">about:debugging</div>
+          <div class="body">
+            <b>Temporary Extensions</b>
+            <div class="row"><span class="btn hl">Load Temporary Add-on…</span></div>
+          </div>
+        </div>
+      </li>
+      <li>
+        <h3>Pin it and try it</h3>
+        <p>Click the puzzle-piece icon in the toolbar, then the gear next to OmniDM, then <b>Pin to Toolbar</b>.
+          Downloads now go to OmniDM, as in Chrome.</p>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ───────────────────────── Help ───────────────────────── -->
+  <section class="part" id="help">
+    <div class="part-title"><b>Help</b><h2>If something doesn't work</h2></div>
+    <table class="trouble">
+      <tr><td>A red <span class="badge">!</span> on the extension's icon</td>
+        <td>The browser can't find the app. Install it (Part 1). If it is installed, run the setup again and choose Reinstall.</td></tr>
+      <tr><td>An amber <span class="badge amber">!</span> on the icon</td>
+        <td>The app was found but didn't start. Open OmniDM from the Start menu; the next download connects to it again.</td></tr>
+      <tr><td>Downloads still go to the browser, or to Internet Download Manager</td>
+        <td>If IDM is installed, turn off its browser extension (or "advanced browser integration"), so only one program takes the downloads.
+          Also check that OmniDM isn't switched off: clicking its icon switches it off and on.</td></tr>
+      <tr><td>The extension disappeared</td>
+        <td>In Chrome, Edge or Brave its folder was moved or deleted: put it back, or load it again (Part 2).
+          In Firefox this happens each time Firefox closes (Part 3).</td></tr>
+      <tr><td>Updating</td>
+        <td>The app updates itself: when a new version is out, OmniDM offers it. Your downloads pause and continue after the restart.
+          For the extension, replace the contents of your <code>OmniDM_chrome</code> folder with the new one, then click the
+          reload arrow ↻ on OmniDM's card in the extensions page.</td></tr>
+      <tr><td>Uninstalling</td>
+        <td>Windows Settings → Apps → OmniDM → Uninstall. Then remove the extension in the browser's extensions page.</td></tr>
+    </table>
+  </section>
+
+  <footer>OmniDM {{VERSION}} · free and open source (GPL-3.0) · <a href="https://github.com/FahimAnsawry/OmniDm">github.com/FahimAnsawry/OmniDm</a></footer>
+</main>
+</body>
+</html>

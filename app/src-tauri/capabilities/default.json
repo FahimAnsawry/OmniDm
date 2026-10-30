@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window, capture prompts, details and video windows: pick folders, move, minimize, maximize, close and retitle themselves; a prompt also leaves the top; the uninstall window",
-  "windows": ["main", "capture-*", "details-*", "media-*", "uninstall"],
+  "description": "The main window, capture prompts, details and video windows: pick folders, move, minimize, maximize, close and retitle themselves; a prompt also leaves the top; the uninstall and update windows",
+  "windows": ["main", "capture-*", "details-*", "media-*", "uninstall", "update"],
   "permissions": [
     "core:default",
     "core:window:allow-close",

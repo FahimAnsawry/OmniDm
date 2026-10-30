@@ -52,6 +52,16 @@ export type AppSettings = {
   startWithWindows: boolean;
 };
 
+/** A newer OmniDM, as the update window shows it. */
+export type UpdateInfo = {
+  version: string;
+  /** The version running now. */
+  current: string;
+  notes: string | null;
+  /** When it was published, in seconds since 1970. */
+  date: number | null;
+};
+
 export const api = {
   listDownloads: () => invoke<DownloadSummary[]>("list_downloads"),
   listQueues: () => invoke<QueueSummary[]>("list_queues"),
@@ -89,6 +99,8 @@ export const api = {
   moveCategory: (id: number, index: number) => invoke<void>("move_category", { id, index }),
   openDetails: (id: number) => invoke<void>("open_details", { id }),
   details: (id: number) => invoke<DownloadDetails | null>("download_details", { id }),
+  updateInfo: () => invoke<UpdateInfo | null>("update_info"),
+  installUpdate: () => invoke<void>("install_update"),
 };
 
 /** Tauri commands reject with the Rust error string. */

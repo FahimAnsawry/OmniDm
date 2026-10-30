@@ -15,7 +15,79 @@ use crate::media::WORK_SUFFIX;
 /// How long deleting waits for a running download to stop.
 const STOP_WAIT: Duration = Duration::from_secs(10);
 
+/// What was going when OmniDM restarted into an update, as JSON ([`Going`]).
+const RESTART_SETTING: &str = "resume_after_restart";
+
+/// Started queues, and downloads running or waiting outside them.
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+struct Going {
+    queues: Vec<i64>,
+    downloads: Vec<i64>,
+}
+
 impl Manager {
+    /// Before OmniDM restarts into an update: saves what is going, pauses it all, and waits
+    /// up to 10 s for the downloads to stop, so each one's progress is on disk.
+    /// [`Manager::resume_after_restart`] starts them again.
+    pub async fn pause_for_restart(&self) -> Result<(), String> {
+        let going = {
+            let state = self.inner.state.lock().unwrap();
+            Going {
+                queues: state.queues.keys().copied().collect(),
+                // A queue's own downloads come back with their queue.
+                downloads: state
+                    .running
+                    .keys()
+                    .copied()
+                    .chain(state.waiting.iter().map(|p| p.id))
+                    .filter(|&id| state.owner(id).is_none())
+                    .collect(),
+            }
+        };
+        let saved = serde_json::to_string(&going).map_err(|e| e.to_string())?;
+        self.set_setting(RESTART_SETTING, &saved)?;
+        self.pause_all();
+        let deadline = tokio::time::Instant::now() + STOP_WAIT;
+        while self.has_running() && tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        Ok(())
+    }
+
+    /// After a restart into an update, starts again what [`Manager::pause_for_restart`]
+    /// stopped: its queues (those that still exist) and its other downloads. Does nothing
+    /// after an ordinary start. Returns how many downloads it continued.
+    pub async fn resume_after_restart(&self) -> usize {
+        let Some(saved) = self.setting(RESTART_SETTING).filter(|s| !s.is_empty()) else {
+            return 0;
+        };
+        // Only once, even if resuming fails.
+        let _ = self.set_setting(RESTART_SETTING, "");
+        let going: Going = serde_json::from_str(&saved).unwrap_or_default();
+        let queues: Vec<i64> = {
+            let store = self.inner.store.lock().unwrap();
+            let exist: Vec<i64> = store
+                .list_queues()
+                .unwrap_or_default()
+                .iter()
+                .map(|q| q.id.0)
+                .collect();
+            going
+                .queues
+                .into_iter()
+                .filter(|q| exist.contains(q))
+                .collect()
+        };
+        for queue in queues {
+            self.start_queue_id(queue);
+        }
+        let mut resumed = 0;
+        for id in going.downloads {
+            resumed += usize::from(self.resume(id).await.is_ok());
+        }
+        resumed
+    }
+
     /// Stops every started queue and pauses every running or waiting download.
     pub fn pause_all(&self) {
         let (queues, active): (Vec<i64>, Vec<i64>) = {

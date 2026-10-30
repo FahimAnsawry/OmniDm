@@ -7,6 +7,7 @@ import App from "./App";
 import { CapturePrompt } from "./components/CapturePrompt";
 import { DetailsWindow } from "./components/DetailsWindow";
 import { MediaWindow } from "./components/MediaWindow";
+import { UpdateWindow } from "./components/UpdateWindow";
 import { WindowMotion } from "./components/WindowMotion";
 import { SetupWindow } from "./setup/SetupWindow";
 import { UninstallWindow } from "./setup/UninstallWindow";
@@ -15,7 +16,8 @@ import "./index.css";
 
 // A capture prompt's window is labelled `capture-<download id>`, a details window
 // `details-<download id>`, a video window `media-<offer>`; the main window shows the list.
-// `setup` is OmniDM-Setup.exe's window (installer/), `uninstall` the app's uninstall window.
+// `setup` is OmniDM-Setup.exe's window (installer/), `uninstall` the app's uninstall window,
+// `update` the window offering a newer version.
 const label = getCurrentWindow().label;
 const capture = /^capture-(\d+)$/.exec(label);
 const details = /^details-(\d+)$/.exec(label);
@@ -36,6 +38,10 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     ) : label === "uninstall" ? (
       <WindowMotion>
         <UninstallWindow />
+      </WindowMotion>
+    ) : label === "update" ? (
+      <WindowMotion>
+        <UpdateWindow />
       </WindowMotion>
     ) : capture ? (
       <WindowMotion>

@@ -350,7 +350,10 @@ async fn run_queue(action: QueueCommand, app: AppConnection) -> ExitCode {
                 if off {
                     format!("Queue {name} now starts only by hand.")
                 } else {
-                    format!("Scheduled queue {name}. See it with: {} queue list", program_name())
+                    format!(
+                        "Scheduled queue {name}. See it with: {} queue list",
+                        program_name()
+                    )
                 },
             )
         }

@@ -232,6 +232,57 @@ async fn pause_all_and_resume_all() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn an_update_restart_pauses_everything_and_starts_it_again_once() {
+    let env = env().await;
+    env.slow_file("/alone.bin");
+    env.slow_file("/queued.bin");
+    env.slow_file("/stopped.bin");
+    env.manager
+        .create_queue(omnidm_ipc::protocol::NewQueue {
+            name: "Night".into(),
+            max_concurrent: None,
+            on_complete: None,
+        })
+        .unwrap();
+    let mut updates = env.manager.subscribe();
+    let alone = env.add("/alone.bin");
+    let queued = env
+        .manager
+        .add(AddRequest {
+            url: env.server.url("/queued.bin"),
+            dir: env.downloads.path().to_string_lossy().into_owned(),
+            file_name: None,
+            connections: None,
+            headers: vec![],
+            cookies: vec![],
+            data: None,
+            queue: Some("Night".into()),
+        })
+        .unwrap();
+    let stopped = env.add("/stopped.bin");
+    started(&mut updates, stopped).await;
+    env.manager.pause(stopped);
+    env.manager.start_queue("Night").unwrap();
+    started(&mut updates, alone).await;
+    started(&mut updates, queued).await;
+
+    env.manager.pause_for_restart().await.unwrap();
+    assert!(!env.manager.has_running());
+    let night_running = |m: &Manager| m.queues().iter().any(|q| q.name == "Night" && q.running);
+    assert!(!night_running(&env.manager));
+
+    assert_eq!(env.manager.resume_after_restart().await, 1);
+    assert!(env.manager.is_active(alone) && env.manager.is_active(queued));
+    assert!(night_running(&env.manager));
+    assert!(
+        !env.manager.is_active(stopped),
+        "one the user paused stays paused"
+    );
+    assert_eq!(env.manager.resume_after_restart().await, 0, "only once");
+    env.manager.pause_all();
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn summaries_say_when_downloads_were_added_and_completed() {
     let env = env().await;
     env.server.set_file("/t.bin", FileSpec::new(64 * KIB));

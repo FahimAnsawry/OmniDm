@@ -10,6 +10,7 @@ mod media;
 mod notify;
 mod settings;
 mod uninstall;
+mod update;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -76,7 +77,9 @@ pub fn run() {
             // Started with Windows: into the tray, like a start from the browser.
             Some(vec!["--background"]),
         ))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(clipboard::ClipboardWatch::default())
+        .manage(update::Found::default())
         .setup(move |app| {
             let manager = Manager::start(ManagerConfig {
                 data_dir: data_dir(),
@@ -109,6 +112,7 @@ pub fn run() {
             ));
             forward_updates(app.handle().clone(), &manager);
             build_tray(app)?;
+            update::start(app.handle().clone());
             if !background {
                 show_window(app.handle());
             }
@@ -161,7 +165,9 @@ pub fn run() {
             details::open_details,
             details::download_details,
             media::media_offer,
-            media::accept_media
+            media::accept_media,
+            update::update_info,
+            update::install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running OmniDM");
@@ -492,6 +498,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         None::<&str>,
     )?;
     app.manage(capture::AskMenuItem(ask.clone()));
+    let check = MenuItem::with_id(app, "update", "Check for updates", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
@@ -503,6 +510,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &ask,
             &PredefinedMenuItem::separator(app)?,
+            &check,
             &quit,
         ],
     )?;
@@ -527,6 +535,10 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
                     .and_then(|item| item.0.is_checked().ok())
                     .unwrap_or(true);
                 let _ = capture::apply(app, ask);
+            }
+            "update" => {
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move { update::check(&app, true).await });
             }
             "quit" => app.exit(0),
             _ => {}

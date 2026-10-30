@@ -21,6 +21,16 @@
   SendMessage 0xFFFF 0x1A 0 "STR:Environment" /TIMEOUT=5000
 !macroend
 
+!macro NSIS_HOOK_PREINSTALL
+  ; The installer closes OmniDm.exe itself, but a browser keeps the host running and a
+  ; terminal may be running the CLI: both would stay locked and silently not be replaced.
+  ; The extension starts the host again when it next needs the app.
+  nsExec::Exec 'taskkill /F /IM omnidm-host.exe'
+  Pop $R0
+  nsExec::Exec 'taskkill /F /IM omnidm-cli.exe'
+  Pop $R0
+!macroend
+
 !macro NSIS_HOOK_POSTINSTALL
   !insertmacro OMNIDM_USER_PATH 1
 
