@@ -170,9 +170,9 @@ export function CategoriesEditor({
           type="button"
           onClick={() => setSelected("new")}
           disabled={selected === "new"}
-          className="flex h-9 w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-white/[0.16] text-[13px] font-medium text-[#c9cfdd] hover:border-[#6b88ff]/50 hover:bg-[#4a6cff]/[0.08] hover:text-[#f4f6fb] disabled:pointer-events-none disabled:opacity-40"
+          className="group flex h-9 w-full items-center justify-center gap-2 rounded-[10px] border border-dashed border-white/[0.16] text-[13px] font-medium text-[#c9cfdd] hover:border-[#6b88ff]/50 hover:bg-[#4a6cff]/[0.08] hover:text-[#f4f6fb] disabled:pointer-events-none disabled:opacity-40"
         >
-          <Icon name="plus" className="size-4 text-[#8ea4ff]" />
+          <Icon name="plus" className="size-4 text-[#8ea4ff] transition-[rotate] duration-300 ease-out motion-safe:group-hover:rotate-90" />
           Add category
         </button>
       </div>
@@ -267,7 +267,7 @@ export function CategoriesEditor({
                 </Button>
               ))}
             {selected === "new" && (
-              <Button ghost className="-ml-2" onClick={() => setSelected(categories[0]?.categoryId ?? null)}>
+              <Button ghost danger className="-ml-2" onClick={() => setSelected(categories[0]?.categoryId ?? null)}>
                 Cancel
               </Button>
             )}

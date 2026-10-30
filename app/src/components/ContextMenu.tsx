@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon, type IconName } from "./Icon";
+import { frameInset } from "./WindowMotion";
 
 export type MenuItem =
   | { label: string; icon?: IconName; disabled?: boolean; danger?: boolean; onSelect: () => void }
@@ -26,9 +27,11 @@ export function ContextMenu({
     const element = menu.current;
     if (!element) return;
     const { width, height } = element.getBoundingClientRect();
+    // Inside the window's card, not the see-through space around it.
+    const edge = frameInset() + 4;
     setPlace({
-      left: Math.min(x, window.innerWidth - width - 4),
-      top: Math.min(y, window.innerHeight - height - 4),
+      left: Math.min(x, window.innerWidth - width - edge),
+      top: Math.min(y, window.innerHeight - height - edge),
     });
     element.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
   }, [x, y]);

@@ -53,13 +53,13 @@ export function TitleBar({ search, onSearch, searchInput, onSettings, settingsOp
           aria-label="Settings"
           aria-pressed={settingsOpen}
           title="Settings"
-          className={`flex size-8 items-center justify-center rounded-lg border ${
+          className={`group flex size-8 items-center justify-center rounded-lg border ${
             settingsOpen
               ? "border-white/[0.12] bg-white/[0.08] text-[#f4f6fb]"
               : "border-transparent text-[#c9cfdd] hover:bg-white/[0.07] hover:text-[#f4f6fb]"
           }`}
         >
-          <Icon name="settings" />
+          <Icon name="settings" className="size-4 transition-[rotate] duration-500 ease-out motion-safe:group-hover:rotate-45" />
         </button>
         <span className="h-[18px] w-px bg-white/10" />
         <WindowButtons maximize big />

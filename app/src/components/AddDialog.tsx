@@ -9,6 +9,7 @@ import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import type { MediaInfo } from "../../../protocol/ts/MediaInfo";
 import type { QueueSummary } from "../../../protocol/ts/QueueSummary";
 import { api, errorText } from "../lib/api";
+import { closeDialog } from "../lib/closeDialog";
 import { looksLikeStream } from "../lib/media";
 import { FileIcon } from "./Chrome";
 import { Button, Field, FolderField, inputBase } from "./Fields";
@@ -53,6 +54,8 @@ export function AddDialog({
   const [quality, setQuality] = useState(0);
   const [audio, setAudio] = useState<number | undefined>();
   const info = media?.status === "ready" ? media.info : undefined;
+  /** Plays the dialog's leaving, then closes it. */
+  const close = () => closeDialog(dialog.current, onClose);
 
   useEffect(() => {
     dialog.current?.showModal();
@@ -137,7 +140,7 @@ export function AddDialog({
           audio: sound && { name: sound.name, language: sound.language ?? null },
           queue: inQueue,
         });
-        onClose();
+        close();
         return;
       }
       await api.addDownload({
@@ -146,7 +149,7 @@ export function AddDialog({
         folder,
         queue: inQueue,
       });
-      onClose();
+      close();
     } catch (e) {
       setError(errorText(e));
       setBusy(null);
@@ -159,7 +162,7 @@ export function AddDialog({
       aria-labelledby="add-title"
       onCancel={(e) => {
         e.preventDefault();
-        onClose();
+        close();
       }}
       className="m-auto w-[560px] max-w-[calc(100vw-2rem)] rounded-2xl border border-white/[0.12] bg-[#12172a] p-0 font-sans text-[#f4f6fb] shadow-[0_32px_64px_-12px_rgb(0_0_0/0.75)] backdrop:bg-[#04060c]/70"
     >
@@ -183,10 +186,10 @@ export function AddDialog({
           <button
             type="button"
             aria-label="Close"
-            onClick={onClose}
-            className="flex size-8 items-center justify-center rounded-lg text-[#8b93a9] hover:bg-white/[0.07] hover:text-[#f4f6fb]"
+            onClick={close}
+            className="group flex size-8 items-center justify-center rounded-lg text-[#ff8a8f] hover:bg-[#e5484d]/[0.16] hover:text-[#ffc9cb]"
           >
-            <Icon name="close" />
+            <Icon name="close" className="size-4 transition-[rotate] duration-300 ease-out motion-safe:group-hover:rotate-90" />
           </button>
         </div>
         <Field label="Link" htmlFor="add-url">
@@ -264,7 +267,7 @@ export function AddDialog({
           </p>
         )}
         <div className="flex items-center gap-2 border-t border-white/[0.06] pt-4">
-          <Button ghost onClick={onClose} className="mr-auto -ml-2">
+          <Button ghost danger onClick={close} className="mr-auto -ml-2">
             Cancel
           </Button>
           {queues.length > 0 && (

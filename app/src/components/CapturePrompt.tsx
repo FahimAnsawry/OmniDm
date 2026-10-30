@@ -142,7 +142,7 @@ export function CapturePrompt({ id }: { id: number }) {
         e.preventDefault();
         answer();
       }}
-      className="glow-window flex h-screen flex-col px-4 pt-3 pb-4 font-sans text-[#f4f6fb] select-none"
+      className="glow-window flex h-full flex-col px-4 pt-3 pb-4 font-sans text-[#f4f6fb] select-none"
     >
       <SmallTitleBar />
 
@@ -196,7 +196,7 @@ export function CapturePrompt({ id }: { id: number }) {
             <button
               type="button"
               onClick={browse}
-              className="rounded-lg border border-white/[0.12] bg-white/[0.06] px-2.5 py-1.5 text-xs font-medium hover:bg-white/[0.1]"
+              className="button-glass rounded-lg px-2.5 py-1.5 text-xs font-medium"
             >
               Change
             </button>
@@ -227,6 +227,14 @@ export function CapturePrompt({ id }: { id: number }) {
           </span>
           Don't ask again
         </label>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={cancel}
+          className="flex h-9 items-center rounded-[10px] border border-transparent px-3.5 text-[13px] font-semibold text-[#ff8a8f] hover:border-[#e5484d]/35 hover:bg-[#e5484d]/[0.14] hover:text-[#ffc9cb] disabled:opacity-40"
+        >
+          Cancel
+        </button>
         {queues.length > 0 && (
           <div className="relative">
             <button
@@ -235,7 +243,7 @@ export function CapturePrompt({ id }: { id: number }) {
               aria-expanded={laterMenu}
               disabled={busy || !about}
               onClick={() => setLaterMenu((shown) => !shown)}
-              className="flex h-9 items-center gap-1.5 rounded-[10px] border border-white/[0.12] bg-white/[0.04] pr-2.5 pl-3 text-[13px] font-semibold hover:bg-white/[0.08] disabled:opacity-40"
+              className="button-glass flex h-9 items-center gap-1.5 rounded-[10px] pr-2.5 pl-3 text-[13px] font-semibold disabled:opacity-40"
             >
               <Icon name="clock" className="text-[#c9cfdd]" />
               Later

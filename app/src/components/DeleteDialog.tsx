@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import { useEffect, useRef, useState } from "react";
+import { closeDialog } from "../lib/closeDialog";
 import { Button } from "./Fields";
 import { Icon } from "./Icon";
 
@@ -33,7 +34,7 @@ export function DeleteDialog({
       aria-describedby="delete-which"
       onCancel={(e) => {
         e.preventDefault();
-        onCancel();
+        closeDialog(dialog.current, onCancel);
       }}
       className="m-auto w-[440px] max-w-[calc(100vw-2rem)] rounded-2xl border border-white/[0.12] bg-[#12172a] p-0 font-sans text-[#f4f6fb] shadow-[0_32px_64px_-12px_rgb(0_0_0/0.75)] backdrop:bg-[#04060c]/70"
     >
@@ -41,7 +42,7 @@ export function DeleteDialog({
         method="dialog"
         onSubmit={(e) => {
           e.preventDefault();
-          onConfirm(deleteFiles);
+          closeDialog(dialog.current, () => onConfirm(deleteFiles));
         }}
         className="flex flex-col gap-4 p-5"
       >
@@ -83,7 +84,9 @@ export function DeleteDialog({
           </span>
         </label>
         <div className="flex justify-end gap-2 pt-1">
-          <Button onClick={onCancel}>Cancel</Button>
+          <Button ghost danger onClick={() => closeDialog(dialog.current, onCancel)}>
+            Cancel
+          </Button>
           <Button type="submit" danger autoFocus>
             <Icon name="trash" className="size-4" />
             {deleteFiles ? "Delete" : "Remove"}

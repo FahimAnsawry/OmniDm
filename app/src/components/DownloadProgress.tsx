@@ -3,7 +3,7 @@
 // One download's progress, shown in the capture prompt's window after "Download now".
 // Closing the window while downloading asks for confirmation and cancels the download.
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Finished } from "../../../protocol/ts/Finished";
@@ -157,7 +157,7 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
   if (state === "completed") {
     const bytes = total ?? downloaded;
     return (
-      <div className="glow-done flex h-screen flex-col px-4 pt-3 pb-4 font-sans text-[#f4f6fb] select-none">
+      <div className="glow-done flex h-full flex-col px-4 pt-3 pb-4 font-sans text-[#f4f6fb] select-none">
         {titleBar && <SmallTitleBar status="Done" onClose={closeNow} />}
         <div className="mt-4 flex flex-col items-center">
           <div className="relative self-center">
@@ -179,7 +179,7 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
             type="button"
             title={folder}
             onClick={() => act(api.showInFolder(id))}
-            className="mt-3.5 flex max-w-full items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 hover:bg-white/[0.06]"
+            className="button-glass mt-3.5 flex max-w-full items-center gap-1.5 rounded-lg px-3 py-1.5"
           >
             <Icon name="folder" className="size-3 text-[#8ea4ff]" />
             <Crumbs crumbs={crumbs} size="text-xs" />
@@ -202,7 +202,7 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
           <button
             type="button"
             onClick={closeNow}
-            className="h-9 rounded-[10px] border border-white/[0.12] bg-white/[0.04] px-3.5 text-[13px] font-semibold hover:bg-white/[0.08]"
+            className="button-glass h-9 rounded-[10px] px-3.5 text-[13px] font-semibold"
           >
             Close
           </button>
@@ -230,7 +230,7 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
   const stopped = state === "paused" || state === "failed";
 
   return (
-    <div className="glow-window relative flex h-screen flex-col px-4 pt-3 pb-4 font-sans text-[#f4f6fb] select-none">
+    <div className="glow-window relative flex h-full flex-col px-4 pt-3 pb-4 font-sans text-[#f4f6fb] select-none">
       {titleBar && (
         <SmallTitleBar
           status={state === "failed" ? "Failed" : state === "paused" ? "Paused" : `${percent}% downloaded`}
@@ -256,7 +256,7 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
           </p>
         </div>
 
-        <ProgressBar fraction={fraction} state={state} />
+        <ProgressBar fraction={fraction} state={state} speed={speed} />
 
         <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.03]">
           <dl className="grid grid-cols-3 pt-3.5 tabular-nums">
@@ -290,7 +290,7 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
               setState("starting");
               act(api.resume([id]));
             }}
-            className="flex h-9 items-center gap-1.5 rounded-[10px] border border-white/[0.12] bg-white/[0.04] px-3 text-[13px] font-semibold hover:bg-white/[0.08]"
+            className="button-glass flex h-9 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-semibold"
           >
             <Icon name={state === "failed" ? "retry" : "play"} className="text-[#c9cfdd]" />
             {state === "failed" ? "Retry" : "Resume"}
@@ -299,7 +299,7 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
           <button
             type="button"
             onClick={() => act(api.pause([id]))}
-            className="flex h-9 items-center gap-1.5 rounded-[10px] border border-white/[0.12] bg-white/[0.04] px-3 text-[13px] font-semibold hover:bg-white/[0.08]"
+            className="button-glass flex h-9 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-semibold"
           >
             <Icon name="pause" className="text-[#c9cfdd]" />
             Pause
@@ -308,7 +308,7 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
         <button
           type="button"
           onClick={requestClose}
-          className="h-9 rounded-[10px] border border-[#e5484d55] bg-[#e5484d1f] px-4 text-[13px] font-semibold text-[#ff9a9e] hover:bg-[#e5484d33]"
+          className="button-danger h-9 rounded-[10px] px-4 text-[13px] font-semibold"
         >
           Cancel
         </button>
@@ -320,7 +320,7 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
           aria-modal="true"
           aria-labelledby="cancel-title"
           aria-describedby="cancel-desc"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-6 backdrop-blur-sm"
+          className="overlay-pop absolute inset-0 z-50 flex items-center justify-center bg-black/65 px-6 backdrop-blur-sm"
         >
           <div className="w-full max-w-sm rounded-2xl border border-white/[0.12] bg-[#12172a] p-5 shadow-[0_24px_48px_rgb(0_0_0/0.65)]">
             <h2 id="cancel-title" className="text-[15px] font-semibold text-[#f4f6fb]">
@@ -334,7 +334,7 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
                 type="button"
                 disabled={cancelling}
                 onClick={() => setConfirmCancel(false)}
-                className="h-8 rounded-lg border border-white/[0.12] bg-white/[0.05] px-3 text-xs font-semibold text-[#f4f6fb] hover:bg-white/[0.1] disabled:opacity-50"
+                className="button-glass h-8 rounded-lg px-3 text-xs font-semibold disabled:opacity-50"
               >
                 Keep downloading
               </button>
@@ -343,7 +343,7 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
                 autoFocus
                 disabled={cancelling}
                 onClick={cancelAndClose}
-                className="h-8 rounded-lg bg-[#e5484d] px-3.5 text-xs font-semibold text-white hover:bg-[#f2555a] disabled:opacity-50"
+                className="button-danger h-8 rounded-lg px-3.5 text-xs font-semibold disabled:opacity-50"
               >
                 {cancelling ? "Cancelling…" : "Yes, cancel"}
               </button>
@@ -370,12 +370,46 @@ function Stat({ label, children, divider }: { label: string; children: ReactNode
 function ProgressBar({
   fraction,
   state,
+  speed,
 }: {
   fraction: number;
   state: State;
+  /** Bytes a second, which sets how fast the colour flows. */
+  speed: number;
 }) {
-  const fill =
-    state === "paused" ? "bg-[#6b7390]" : state === "failed" ? "bg-[#e5484d]" : "bar-fill";
+  const fill = useRef<HTMLDivElement>(null);
+  /** The flow's pace (px a second) and place, kept across speed updates. */
+  const paceNow = useRef(0);
+  const offsetNow = useRef(0);
+  const flowing = state === "running";
+  const known = fraction > 0;
+
+  // The blues flow along the bar at a pace set by the speed: brisk at 7 MB/s, a drift at
+  // 200 KB/s, still when paused. The pace eases toward each new speed, so it never jumps.
+  useEffect(() => {
+    if (!flowing || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const megabytes = speed / (1024 * 1024);
+    const target = 30 + 60 * Math.log2(1 + megabytes);
+    let pace = paceNow.current || target;
+    let offset = offsetNow.current;
+    let last = performance.now();
+    let frame = requestAnimationFrame(function step(now) {
+      const seconds = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      pace += (target - pace) * Math.min(1, seconds * 3);
+      offset = (offset + pace * seconds) % FLOW_WIDTH;
+      if (fill.current) fill.current.style.backgroundPositionX = `${offset}px`;
+      paceNow.current = pace;
+      offsetNow.current = offset;
+      frame = requestAnimationFrame(step);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [flowing, speed]);
+
+  const look =
+    state === "paused" ? "bg-[#6b7390]" : state === "failed" ? "bg-[#e5484d]" : "bar-flow";
+  // The flame flickers faster when the download is faster.
+  const flicker = Math.max(0.07, 0.2 - Math.log2(1 + speed / (1024 * 1024)) * 0.04);
   return (
     <div
       role="progressbar"
@@ -383,12 +417,67 @@ function ProgressBar({
       aria-valuemax={100}
       aria-valuenow={Math.floor(fraction * 100)}
       aria-label="Progress"
-      className="h-2 rounded-full bg-white/[0.08]"
+      className="relative h-2 rounded-full bg-white/[0.08]"
     >
-      <div
-        className={`h-full rounded-full transition-[width] duration-300 ${fill}`}
-        style={{ width: `${fraction * 100}%` }}
-      />
+      {!known && state === "starting" && (
+        <div className="absolute inset-0 overflow-hidden rounded-full">
+          <div className="bar-searching" />
+        </div>
+      )}
+      {known && (
+        <div
+          ref={fill}
+          className={`relative h-full overflow-hidden rounded-full transition-[width] duration-300 ${look}`}
+          style={{ width: `${fraction * 100}%` }}
+        >
+          {flowing && <div className="bar-trail" />}
+        </div>
+      )}
+      {known && (state === "running" || state === "paused") && (
+        <Rocket at={fraction} lit={flowing} flicker={flicker} />
+      )}
     </div>
+  );
+}
+
+/** How far the flowing colours go before they repeat (`.bar-flow` in index.css). */
+const FLOW_WIDTH = 220;
+
+/** The rocket riding the front of the bar: fire-coloured, with a flickering blue flame while running. */
+function Rocket({ at, lit, flicker }: { at: number; lit: boolean; flicker: number }) {
+  const id = useId();
+  const body = lit ? `url(#${id}-fire)` : "#8b93a9";
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={`bar-rocket ${lit ? "bar-rocket-lit" : ""}`}
+      style={{ left: `${at * 100}%`, ["--flicker" as string]: `${flicker}s` }}
+    >
+      <defs>
+        <linearGradient id={`${id}-fire`} x1="2" y1="22" x2="22" y2="2" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#ff4d2e" />
+          <stop offset="0.5" stopColor="#ff8a4c" />
+          <stop offset="1" stopColor="#ffd25e" />
+        </linearGradient>
+        <linearGradient id={`${id}-flame`} x1="8" y1="15" x2="2" y2="22" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#ffffff" />
+          <stop offset="0.45" stopColor="#8ea4ff" />
+          <stop offset="1" stopColor="#3352ea" />
+        </linearGradient>
+      </defs>
+      {lit && (
+        <path
+          className="bar-rocket-flame"
+          d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"
+          fill={`url(#${id}-flame)`}
+        />
+      )}
+      <g fill="none" stroke={body} strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
+        <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
+        <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
+      </g>
+    </svg>
   );
 }

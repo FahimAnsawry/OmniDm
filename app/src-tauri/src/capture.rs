@@ -28,16 +28,15 @@ pub fn saved_choice(manager: &Manager) -> bool {
 pub fn open(app: &AppHandle, about: &AskAbout) {
     let label = format!("{LABEL_PREFIX}{}", about.download_id);
     if let Some(window) = app.get_webview_window(&label) {
-        let _ = window.show();
-        let _ = window.set_focus();
+        crate::reveal(&window);
         return;
     }
     let built = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()))
         .title("Download file")
-        .inner_size(560.0, 360.0)
+        .inner_size(600.0, 400.0)
         .visible(false)
-        // The window draws its own title bar, and is see-through so its content can
-        // grow in; its shadow comes on once the content is there.
+        // The window draws its own title bar, and is see-through: the page draws a card
+        // with its shadow inside it, 20px in from each side, and animates it.
         .decorations(false)
         .transparent(true)
         .background_color(Color(0, 0, 0, 0))
@@ -49,8 +48,7 @@ pub fn open(app: &AppHandle, about: &AskAbout) {
         .focused(true)
         .on_page_load(|window, payload| {
             if payload.event() == PageLoadEvent::Finished {
-                let _ = window.show();
-                let _ = window.set_focus();
+                crate::reveal(&window);
             }
         })
         .build();

@@ -2,13 +2,15 @@
 
 // Settings: each change is saved and applied at once. Its menu takes the sidebar's place.
 
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import type { CategorySummary } from "../../../protocol/ts/CategorySummary";
 import { type AppSettings, api, errorText } from "../lib/api";
+import { playViewChange } from "../lib/viewChange";
 import { CategoriesEditor } from "./CategoriesEditor";
 import { FolderField, selectClass } from "./Fields";
+import { Glide } from "./Glide";
 import { Icon, type IconName } from "./Icon";
 
 type Section = "general" | "connections" | "categories";
@@ -94,14 +96,23 @@ export function SettingsPage({
   };
 
   const current = SECTIONS.find((s) => s.id === section)!;
+  const panel = useRef<HTMLElement>(null);
+  const shownSection = useRef(section);
+  useLayoutEffect(() => {
+    if (shownSection.current === section) return;
+    shownSection.current = section;
+    playViewChange(panel.current);
+  }, [section]);
 
   return (
     <>
-      <nav aria-label="Settings sections" className="flex w-[232px] shrink-0 flex-col gap-0.5 px-3 pt-1 pb-3">
+      <Glide selected={section} className="flex w-[232px] shrink-0 flex-col gap-0.5 px-3 pt-1 pb-3">
+        <nav aria-label="Settings sections" className="contents">
         <button
           type="button"
           onClick={onClose}
-          className="flex h-[34px] items-center gap-2.5 rounded-[9px] px-2.5 text-[13px] font-medium text-[#c9cfdd] hover:bg-white/[0.05] hover:text-[#f4f6fb]"
+          data-glide
+          className="flex h-[34px] items-center gap-2.5 rounded-[9px] px-2.5 text-[13px] font-medium text-[#c9cfdd] hover:text-[#f4f6fb]"
         >
           <Icon name="back" className="text-[#8b93a9]" />
           Downloads
@@ -114,23 +125,32 @@ export function SettingsPage({
               key={id}
               type="button"
               aria-current={selected ? "page" : undefined}
+              data-glide
+              data-glide-current={selected || undefined}
               onClick={() => setSection(id)}
               className={`flex h-[34px] items-center gap-2.5 rounded-[9px] border px-2.5 text-left text-[13px] ${
                 selected
-                  ? "border-white/10 bg-white/[0.06] font-semibold text-[#f4f6fb]"
-                  : "border-transparent font-medium text-[#c9cfdd] hover:bg-white/[0.04] hover:text-[#f4f6fb]"
+                  ? "border-transparent font-semibold text-[#f4f6fb]"
+                  : "border-transparent font-medium text-[#c9cfdd] hover:text-[#f4f6fb]"
               }`}
             >
-              <Icon name={icon} className={selected ? "text-[#8ea4ff]" : "text-[#8b93a9]"} />
+              <Icon
+                name={icon}
+                className={`size-4 transition-colors duration-300 ${selected ? "icon-pop text-[#8ea4ff]" : "text-[#8b93a9]"}`}
+              />
               {label}
             </button>
           );
         })}
         {version && <p className="mt-auto px-2.5 text-xs text-[#6b7390]">OmniDM {version}</p>}
-      </nav>
+        </nav>
+      </Glide>
 
-      <main className="flex min-w-0 flex-1 flex-col rounded-2xl border border-white/[0.08] bg-white/[0.024] shadow-[0_24px_48px_-16px_rgb(0_0_0/0.5)]">
-        <header className="px-6 pt-[18px] pb-4">
+      <main
+        ref={panel}
+        className="flex min-w-0 flex-1 flex-col rounded-2xl border border-white/[0.08] bg-white/[0.024] shadow-[0_24px_48px_-16px_rgb(0_0_0/0.5)]"
+      >
+        <header data-view-in className="px-6 pt-[18px] pb-4">
           <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-[#f4f6fb]">{current.label}</h1>
           <p className="mt-1 text-xs text-[#8b93a9]">{current.about}</p>
         </header>
@@ -143,7 +163,7 @@ export function SettingsPage({
             {error}
           </p>
         )}
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6">
+        <div data-view-in className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6">
           {!settings ? (
             <p className="text-[13px] text-[#8b93a9]">Loading…</p>
           ) : section === "general" ? (

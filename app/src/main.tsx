@@ -8,6 +8,7 @@ import { CapturePrompt } from "./components/CapturePrompt";
 import { DetailsWindow } from "./components/DetailsWindow";
 import { MediaWindow } from "./components/MediaWindow";
 import { WindowMotion } from "./components/WindowMotion";
+import { followPointer } from "./lib/pointerLight";
 import "./index.css";
 
 // A capture prompt's window is labelled `capture-<download id>`, a details window
@@ -20,6 +21,8 @@ const media = /^media-(\d+)$/.exec(label);
 // The details window has the system's title bar, which opens and closes it; the others
 // draw their own and animate themselves on a see-through window.
 if (!details) document.documentElement.classList.add("see-through");
+
+followPointer();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
@@ -34,7 +37,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
         <MediaWindow offer={Number(media[1])} />
       </WindowMotion>
     ) : (
-      <WindowMotion hideOnClose>
+      <WindowMotion main>
         <App />
       </WindowMotion>
     )}

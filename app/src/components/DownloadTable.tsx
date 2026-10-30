@@ -15,6 +15,7 @@ import {
 } from "../lib/downloads";
 import { formatAdded, formatBytes, formatDuration, formatFullDate, formatSpeed } from "../lib/format";
 import { FileIcon } from "./Chrome";
+import { Glide } from "./Glide";
 import { Icon, type IconName } from "./Icon";
 
 /** A row and the gap under it. */
@@ -217,7 +218,11 @@ export function DownloadTable(props: Props) {
         {rows.length === 0 ? (
           <p className="px-6 py-16 text-center text-[13px] text-[#8b93a9]">Nothing here.</p>
         ) : (
-          <div style={{ height: rows.length * ROW_HEIGHT + TOP * 2 }} className="relative">
+          <Glide
+            style={{ height: rows.length * ROW_HEIGHT + TOP * 2 }}
+            selected={selected.size === 1 ? String([...selected][0]) : undefined}
+            selectedLook="select-row"
+          >
             {rows.slice(first, last).map((row, offset) => {
               const index = first + offset;
               return (
@@ -226,6 +231,7 @@ export function DownloadTable(props: Props) {
                   row={row}
                   index={index}
                   selected={selected.has(row.downloadId)}
+                  alone={selected.size === 1}
                   cursor={index === cursorIndex}
                   onClick={click}
                   onDoubleClick={props.onOpen}
@@ -242,7 +248,7 @@ export function DownloadTable(props: Props) {
                 />
               );
             })}
-          </div>
+          </Glide>
         )}
       </div>
     </div>
@@ -350,6 +356,8 @@ type RowProps = {
   row: Row;
   index: number;
   selected: boolean;
+  /** It is the only selected row: the sliding box shows it, not the row itself. */
+  alone: boolean;
   cursor: boolean;
   onClick: (event: MouseEvent, index: number) => void;
   onDoubleClick: (row: Row) => void;
@@ -361,6 +369,7 @@ const DownloadRow = memo(function DownloadRow({
   row,
   index,
   selected,
+  alone,
   cursor,
   onClick,
   onDoubleClick,
@@ -377,6 +386,8 @@ const DownloadRow = memo(function DownloadRow({
       role="row"
       aria-rowindex={index + 2}
       aria-selected={selected}
+      data-glide
+      data-glide-current={(selected && alone) || undefined}
       onMouseDown={(e) => {
         // Keep text from being selected by shift-clicks.
         if (e.shiftKey) e.preventDefault();
@@ -386,11 +397,11 @@ const DownloadRow = memo(function DownloadRow({
       onContextMenu={onContextMenu}
       style={{ transform: `translateY(${TOP + index * ROW_HEIGHT}px)` }}
       className={`absolute inset-x-3 top-0 grid ${COLUMNS} h-12 cursor-default items-center rounded-[10px] border px-3 text-[13px] select-none ${
-        selected
+        selected && !alone
           ? "border-[#6b88ff4d] bg-[#4a6cff1f]"
-          : cursor
+          : cursor && !selected
             ? "border-white/10"
-            : "border-transparent hover:bg-white/[0.03]"
+            : "border-transparent"
       }`}
     >
       <div role="gridcell" className="flex min-w-0 items-center gap-3" title={`${name}\n${row.url}`}>

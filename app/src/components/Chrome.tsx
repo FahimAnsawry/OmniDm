@@ -31,9 +31,11 @@ export function WindowButtons({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className={`flex items-center justify-center rounded-lg text-[#8b93a9] ${
-        big ? "size-8" : "size-7"
-      } ${danger ? "hover:bg-[#e5484d] hover:text-white" : "hover:bg-white/[0.07] hover:text-[#f4f6fb]"}`}
+      className={`flex items-center justify-center rounded-lg ${big ? "size-8" : "size-7"} ${
+        danger
+          ? "text-[#ff8a8f] hover:bg-[#e5484d] hover:text-white"
+          : "text-[#8b93a9] hover:bg-white/[0.07] hover:text-[#f4f6fb]"
+      }`}
     >
       <Icon name={icon} className={icon === "square" ? "size-3" : "size-4"} />
     </button>

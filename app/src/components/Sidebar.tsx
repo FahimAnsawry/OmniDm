@@ -7,6 +7,7 @@ import { type Row, type View, inView, sameView } from "../lib/downloads";
 import { formatSpeed } from "../lib/format";
 import { categoryIcon } from "../lib/categoryLook";
 import { Icon, type IconName } from "./Icon";
+import { Glide } from "./Glide";
 import { SpeedGraph } from "./SpeedGraph";
 
 type Props = {
@@ -39,14 +40,19 @@ export function Sidebar({ rows, queues, categories, view, onView, speed, speeds 
         <button
           type="button"
           aria-current={selected ? "page" : undefined}
+          data-glide
+          data-glide-current={selected || undefined}
           onClick={() => onView(v)}
           className={`flex h-[34px] w-full items-center gap-2.5 rounded-[9px] border px-2.5 text-left text-[13px] ${
             selected
-              ? "border-white/10 bg-white/[0.06] font-semibold text-[#f4f6fb]"
-              : "border-transparent font-medium text-[#c9cfdd] hover:bg-white/[0.04]"
+              ? "border-transparent font-semibold text-[#f4f6fb]"
+              : "border-transparent font-medium text-[#c9cfdd] hover:text-[#f4f6fb]"
           }`}
         >
-          <Icon name={icon} className={selected ? "text-[#8ea4ff]" : "text-[#8b93a9]"} />
+          <Icon
+            name={icon}
+            className={`size-4 transition-colors duration-300 ${selected ? "icon-pop text-[#8ea4ff]" : "text-[#8b93a9]"}`}
+          />
           <span className="min-w-0 flex-1 truncate">{label}</span>
           {extra}
         </button>
@@ -58,7 +64,7 @@ export function Sidebar({ rows, queues, categories, view, onView, speed, speeds 
 
   return (
     <nav aria-label="Download lists" className="flex w-[232px] shrink-0 flex-col gap-3.5 px-3 pt-1 pb-3">
-      <div className="-mr-2 flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto pr-2 [&:not(:hover)::-webkit-scrollbar-thumb]:bg-transparent">
+      <Glide selected={JSON.stringify(view)} className="-mr-2 flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto pr-2 [&:not(:hover)::-webkit-scrollbar-thumb]:bg-transparent">
         <ul className="space-y-0.5">
           {STATUSES.map(({ status, label, icon }) => {
             const v: View = { kind: "status", status };
@@ -108,7 +114,7 @@ export function Sidebar({ rows, queues, categories, view, onView, speed, speeds 
             })}
           </Section>
         )}
-      </div>
+      </Glide>
 
       <div role="status" className="flex shrink-0 flex-col gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
         <div className="flex items-center gap-1.5 text-xs font-medium text-[#8b93a9]">

@@ -136,6 +136,7 @@ pub fn run() {
             open_file,
             show_in_folder,
             open_extension_guide,
+            wake_page,
             cancel_after_queue,
             add_download,
             look_at_media,
@@ -378,6 +379,21 @@ fn show_in_folder(manager: tauri::State<'_, Manager>, id: i64) -> Result<(), Str
     shown.map_err(|e| format!("can't show {}: {e}", file.display()))
 }
 
+/// Makes a window's page draw again after it comes back from the taskbar: on Windows 10,
+/// a see-through window's page sometimes stops drawing once it has been minimized, and
+/// the window comes back empty. Hiding and showing the page wakes it up.
+#[tauri::command]
+fn wake_page(window: tauri::WebviewWindow) {
+    #[cfg(windows)]
+    let _ = window.with_webview(|page| unsafe {
+        let controller = page.controller();
+        let _ = controller.SetIsVisible(false);
+        let _ = controller.SetIsVisible(true);
+    });
+    #[cfg(not(windows))]
+    let _ = window;
+}
+
 /// Opens the page that tells how to install the browser extension (it isn't in the stores).
 #[tauri::command]
 fn open_extension_guide() -> Result<(), String> {
@@ -528,10 +544,16 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
 
 pub(crate) fn show_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+        reveal(&window);
     }
+}
+
+/// Shows a window and tells its page, which then plays the opening (WindowMotion.tsx).
+pub(crate) fn reveal(window: &tauri::WebviewWindow) {
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+    let _ = window.emit_to(window.label(), "window-reveal", ());
 }
 
 /// Where OmniDM keeps its database: `OMNIDM_DATA_DIR` if set, else `%APPDATA%\OmniDm`.

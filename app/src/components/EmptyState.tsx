@@ -7,7 +7,7 @@ import { Icon } from "./Icon";
 
 export function EmptyState({ onPaste, onExtension }: { onPaste: () => void; onExtension: () => void }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-10 pb-2">
+    <div data-view-in className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-10 pb-2">
       <img src={picture} alt="" draggable={false} className="size-40" />
       <h2 className="mt-3.5 text-[22px] font-semibold tracking-[-0.02em] text-[#f4f6fb]">No downloads yet</h2>
       <p className="mt-2 text-center text-[13px] leading-normal text-[#8b93a9]">
@@ -28,7 +28,7 @@ export function EmptyState({ onPaste, onExtension }: { onPaste: () => void; onEx
         <button
           type="button"
           onClick={onExtension}
-          className="flex h-[38px] items-center gap-2 rounded-[10px] border border-white/[0.14] bg-white/[0.04] px-3.5 text-[13px] font-semibold text-[#f4f6fb] hover:bg-white/[0.08]"
+          className="button-glass flex h-[38px] items-center gap-2 rounded-[10px] px-3.5 text-[13px] font-semibold"
         >
           <Icon name="puzzle" className="text-[#c9cfdd]" />
           Get the browser extension

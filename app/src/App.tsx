@@ -2,7 +2,7 @@
 
 // The main window: its title bar, lists in the sidebar, the downloads, and the actions on them.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { AfterQueue } from "../../protocol/ts/AfterQueue";
 import { AddDialog } from "./components/AddDialog";
@@ -30,6 +30,7 @@ import {
   withLive,
 } from "./lib/downloads";
 import { formatBytes } from "./lib/format";
+import { playViewChange } from "./lib/viewChange";
 import { useAppData } from "./lib/useAppData";
 
 /** Speed samples kept for the sidebar's graph, one a second. */
@@ -74,6 +75,15 @@ function App() {
   const [askFirst, setAskFirst] = useState<boolean | null>(null);
   const [speeds, setSpeeds] = useState<number[]>([]);
   const searchInput = useRef<HTMLInputElement>(null);
+  const panel = useRef<HTMLElement>(null);
+  /** The list on show, to play the change when another one is picked. */
+  const viewKey = JSON.stringify(view);
+  const shownView = useRef(viewKey);
+  useLayoutEffect(() => {
+    if (shownView.current === viewKey) return;
+    shownView.current = viewKey;
+    playViewChange(panel.current);
+  }, [viewKey]);
 
   useEffect(() => {
     const stop = listen<string>("clipboard-link", ({ payload }) => {
@@ -244,7 +254,7 @@ function App() {
         .join(" · ");
 
   return (
-    <div className="glow-main flex h-screen flex-col font-sans text-[#f4f6fb] select-none">
+    <div className="glow-main flex h-full flex-col font-sans text-[#f4f6fb] select-none">
       <TitleBar
         search={search}
         onSearch={(text) => {
@@ -263,7 +273,7 @@ function App() {
         >
           <Icon name="failed" className="size-4" />
           <p className="flex-1 select-text">{error}</p>
-          <button type="button" aria-label="Dismiss" onClick={() => setError(null)} className="rounded p-0.5 hover:bg-white/10">
+          <button type="button" aria-label="Dismiss" onClick={() => setError(null)} className="rounded p-0.5 text-[#ff8a8f] hover:bg-[#e5484d]/[0.16] hover:text-[#ffc9cb]">
             <Icon name="close" className="size-4" />
           </button>
         </div>
@@ -286,7 +296,10 @@ function App() {
             speed={totalSpeed}
             speeds={speeds}
           />
-          <main className="flex min-w-0 flex-1 flex-col rounded-2xl border border-white/[0.08] bg-white/[0.024] shadow-[0_24px_48px_-16px_rgb(0_0_0/0.5)]">
+          <main
+            ref={panel}
+            className="flex min-w-0 flex-1 flex-col rounded-2xl border border-white/[0.08] bg-white/[0.024] shadow-[0_24px_48px_-16px_rgb(0_0_0/0.5)]"
+          >
             <PanelHeader
               title={title}
               subtitle={subtitle}

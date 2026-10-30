@@ -155,7 +155,7 @@ export function MediaWindow({ offer }: { offer: number }) {
         e.preventDefault();
         download();
       }}
-      className="glow-window flex h-screen flex-col px-4 pt-3 pb-4 font-sans text-[#f4f6fb] select-none"
+      className="glow-window flex h-full flex-col px-4 pt-3 pb-4 font-sans text-[#f4f6fb] select-none"
     >
       <SmallTitleBar />
 
@@ -208,7 +208,7 @@ export function MediaWindow({ offer }: { offer: number }) {
             <button
               type="button"
               onClick={browse}
-              className="rounded-lg border border-white/[0.12] bg-white/[0.06] px-2.5 py-1.5 text-xs font-medium hover:bg-white/[0.1]"
+              className="button-glass rounded-lg px-2.5 py-1.5 text-xs font-medium"
             >
               Change
             </button>
@@ -265,7 +265,7 @@ export function MediaWindow({ offer }: { offer: number }) {
               aria-expanded={laterMenu}
               disabled={busy || !info}
               onClick={() => setLaterMenu((shown) => !shown)}
-              className="flex h-9 items-center gap-1.5 rounded-[10px] border border-white/[0.12] bg-white/[0.04] pr-2.5 pl-3 text-[13px] font-semibold hover:bg-white/[0.08] disabled:opacity-40"
+              className="button-glass flex h-9 items-center gap-1.5 rounded-[10px] pr-2.5 pl-3 text-[13px] font-semibold disabled:opacity-40"
             >
               <Icon name="clock" className="text-[#c9cfdd]" />
               Later

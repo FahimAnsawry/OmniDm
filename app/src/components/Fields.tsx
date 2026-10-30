@@ -123,7 +123,7 @@ export function ChipsField({
             type="button"
             aria-label={`Remove ${word}`}
             onClick={() => onChange(values.filter((w) => w !== word))}
-            className="flex size-5 items-center justify-center rounded text-[#8b93a9] hover:bg-white/10 hover:text-[#f4f6fb]"
+            className="flex size-5 items-center justify-center rounded text-[#ff8a8f] hover:bg-[#e5484d]/[0.16] hover:text-[#ffc9cb]"
           >
             <Icon name="close" className="size-3" />
           </button>
@@ -163,7 +163,7 @@ export function ChipsField({
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   primary?: boolean;
-  /** Red: the button removes something. */
+  /** Red: the button removes or cancels something (with `ghost`, red text only). */
   danger?: boolean;
   /** No box until hovered. */
   ghost?: boolean;
@@ -173,10 +173,12 @@ export function Button({ primary, danger, ghost, className = "", ...props }: But
   const look = primary
     ? "button-primary"
     : danger
-      ? "button-danger"
+      ? ghost
+        ? "border border-transparent text-[#ff8a8f] hover:border-[#e5484d]/35 hover:bg-[#e5484d]/[0.14] hover:text-[#ffc9cb]"
+        : "button-danger"
       : ghost
         ? "border border-transparent text-[#c9cfdd] hover:bg-white/[0.06] hover:text-[#f4f6fb]"
-        : "border border-white/[0.12] bg-white/[0.05] text-[#f4f6fb] hover:bg-white/[0.09]";
+        : "button-glass";
   return (
     <button
       type="button"

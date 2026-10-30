@@ -20,15 +20,15 @@ const BACKGROUND: Color = Color(0, 0, 0, 0);
 pub fn open(app: &AppHandle, offer: i64) {
     let label = format!("{LABEL_PREFIX}{offer}");
     if let Some(window) = app.get_webview_window(&label) {
-        let _ = window.set_focus();
+        crate::reveal(&window);
         return;
     }
     let built = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()))
         .title("Download video")
         // The same size as the download window.
-        .inner_size(560.0, 360.0)
-        // The window draws its own title bar, and is see-through so its content can
-        // grow in; its shadow comes on once the content is there.
+        .inner_size(600.0, 400.0)
+        // The window draws its own title bar, and is see-through: the page draws a card
+        // with its shadow inside it, 20px in from each side, and animates it.
         .decorations(false)
         .transparent(true)
         .shadow(false)
@@ -41,8 +41,7 @@ pub fn open(app: &AppHandle, offer: i64) {
         .visible(false)
         .on_page_load(|window, payload| {
             if payload.event() == PageLoadEvent::Finished {
-                let _ = window.show();
-                let _ = window.set_focus();
+                crate::reveal(&window);
             }
         })
         .build();

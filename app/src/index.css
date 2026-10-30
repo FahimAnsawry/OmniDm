@@ -30,6 +30,140 @@ html.see-through body {
   background: transparent;
 }
 
+/* The see-through window holds a rounded card with room around it for its shadow
+   (`INSET` in WindowMotion.tsx); maximized, the card fills the window. */
+html,
+body,
+#root {
+  height: 100%;
+}
+html {
+  --frame-inset: 20px;
+  --frame-radius: 14px;
+}
+html.maximized {
+  --frame-inset: 0px;
+  --frame-radius: 0px;
+}
+.window-stage {
+  position: fixed;
+  inset: 0;
+  padding: var(--frame-inset);
+}
+.window-frame {
+  position: relative;
+  height: 100%;
+  border-radius: var(--frame-radius);
+  overflow: hidden;
+  box-shadow:
+    0 8px 18px -6px rgb(0 0 0 / 0.6),
+    0 2px 5px rgb(0 0 0 / 0.35);
+  will-change: transform, opacity, filter;
+}
+.window-body {
+  height: 100%;
+}
+/* A fine light edge, brighter along the top like glass catching the light. */
+.window-edge {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.08),
+    inset 0 1px 0 rgb(255 255 255 / 0.1);
+}
+html.maximized .window-edge {
+  box-shadow: none;
+}
+.window-sheen-clip {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+.window-sheen {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-110%);
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgb(255 255 255 / 0.05) 44%,
+    rgb(255 190 150 / 0.09) 50%,
+    rgb(140 165 255 / 0.05) 56%,
+    transparent 70%
+  );
+}
+.window-resize {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+.window-resize > * {
+  pointer-events: auto;
+}
+html.maximized .window-resize {
+  display: none;
+}
+
+/* A dialog over a window: the dark backdrop covers the card only;
+   the dialog comes into focus rising, and leaves quickly (`closeDialog`). */
+html.see-through dialog::backdrop {
+  inset: 20px;
+  border-radius: 14px;
+}
+html.see-through.maximized dialog::backdrop {
+  inset: 0;
+  border-radius: 0;
+}
+dialog[open],
+.overlay-pop > * {
+  animation: dialog-in 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+}
+dialog[open]::backdrop,
+.overlay-pop {
+  animation: backdrop-in 0.22s ease-out;
+}
+dialog.leaving {
+  animation: dialog-out 0.14s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+dialog.leaving::backdrop {
+  animation: backdrop-out 0.14s ease-in forwards;
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.94);
+  }
+}
+@keyframes dialog-out {
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+}
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog[open],
+  .overlay-pop > * {
+    animation-name: backdrop-in;
+  }
+  dialog.leaving {
+    animation-name: backdrop-out;
+  }
+}
+
 select {
   color-scheme: dark;
 }
@@ -60,26 +194,216 @@ select optgroup {
     #0a0d18;
 }
 
-/* The blue main button. */
+/* Every button eases its hover in quickly and out a little slower, and dips when pressed.
+   Rows in lists and menus don't dip: a whole row shrinking looks wrong. */
+@layer base {
+  button {
+    transition-property: color, background-color, border-color, box-shadow, opacity, translate, scale, rotate;
+    transition-duration: 0.25s;
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  button:hover {
+    transition-duration: 0.15s;
+  }
+  button:active:not(:disabled) {
+    scale: 0.97;
+    transition-duration: 0.08s;
+  }
+  :where(nav, li, th, [role="menu"]) button:active:not(:disabled) {
+    scale: none;
+  }
+}
+
+/* The blue main button: on hover it lifts and glows, a soft light follows the mouse
+   (--mx/--my, set by lib/pointerLight.ts) and a shine sweeps across it once. */
+.button-primary,
+.button-danger {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: #fff;
+  /* Keeps the white text clear over the lights below. */
+  text-shadow: 0 1px 2px rgb(8 14 60 / 0.45);
+}
 .button-primary {
   background: linear-gradient(180deg, #4a6cff, #2a48e0);
   border: 1px solid rgb(255 255 255 / 0.22);
   box-shadow: 0 8px 24px -6px rgb(59 91 255 / 0.7);
-  color: #fff;
 }
-.button-primary:hover {
+.button-primary:hover:not(:disabled) {
   background: linear-gradient(180deg, #5878ff, #3352ea);
+  translate: 0 -1px;
+  box-shadow:
+    0 14px 30px -6px rgb(59 91 255 / 0.85),
+    0 0 0 1px rgb(124 155 255 / 0.25);
+}
+.button-primary:active:not(:disabled),
+.button-danger:active:not(:disabled) {
+  translate: none;
+}
+.button-primary:active:not(:disabled) {
+  box-shadow: 0 4px 12px -4px rgb(59 91 255 / 0.6);
+}
+.button-primary::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(110px circle at var(--mx, 50%) var(--my, 50%), rgb(255 255 255 / 0.15), transparent 65%);
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.button-primary:hover:not(:disabled)::before {
+  opacity: 1;
+  transition-duration: 0.15s;
+}
+.button-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.18) 50%, transparent 65%);
+  translate: -120% 0;
+  pointer-events: none;
+}
+.button-primary:hover:not(:disabled)::after {
+  animation: button-shine 0.75s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes button-shine {
+  to {
+    translate: 120% 0;
+  }
 }
 
-/* The red button that removes something. */
+/* The red button that removes something: it lifts and glows red, without the shine. */
 .button-danger {
   background: linear-gradient(180deg, #f2555a, #d42a30);
   border: 1px solid rgb(255 255 255 / 0.18);
   box-shadow: 0 8px 24px -8px rgb(229 72 77 / 0.7);
-  color: #fff;
 }
-.button-danger:hover {
+.button-danger:hover:not(:disabled) {
   background: linear-gradient(180deg, #f6666b, #dc3439);
+  translate: 0 -1px;
+  box-shadow:
+    0 14px 28px -8px rgb(229 72 77 / 0.85),
+    0 0 0 1px rgb(255 120 124 / 0.25);
+}
+.button-danger:active:not(:disabled) {
+  box-shadow: 0 4px 12px -4px rgb(229 72 77 / 0.6);
+}
+
+/* A glass button: on hover it lightens and its edge lights up where the mouse is. */
+.button-glass {
+  position: relative;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  background-color: rgb(255 255 255 / 0.04);
+  color: #f4f6fb;
+}
+.button-glass:hover:not(:disabled) {
+  border-color: rgb(255 255 255 / 0.16);
+  background-color: rgb(255 255 255 / 0.07);
+  background-image: radial-gradient(
+    120px circle at var(--mx, 50%) var(--my, 50%),
+    rgb(160 182 255 / 0.1),
+    transparent 70%
+  );
+}
+.button-glass::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  background:
+    radial-gradient(90px circle at var(--mx, 50%) var(--my, 50%), rgb(150 176 255), transparent 70%);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+.button-glass:hover:not(:disabled)::before {
+  opacity: 1;
+  transition-duration: 0.15s;
+}
+
+/* The highlight that glides from item to item in a list (Glide.tsx). */
+.glide-pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  border-radius: 9px;
+  background: rgb(255 255 255 / 0.05);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.04);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    translate 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s;
+}
+
+/* The selected item's glass box, which slides to a new choice (Glide.tsx). */
+.select-pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  border-radius: 9px;
+  background: rgb(255 255 255 / 0.06);
+  box-shadow: 0 6px 16px -10px rgb(0 0 0 / 0.6);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The file list's selected row: a blue box that slides to the newly clicked file. */
+.select-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  border: 1px solid rgb(107 136 255 / 0.3);
+  border-radius: 10px;
+  background: rgb(74 108 255 / 0.12);
+  box-shadow: 0 8px 20px -12px rgb(59 91 255 / 0.6);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* A newly selected item's icon turns blue with a small pop. */
+.icon-pop {
+  animation: icon-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes icon-pop {
+  40% {
+    scale: 1.22;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .icon-pop {
+    animation: none;
+  }
+  button,
+  button:active:not(:disabled),
+  .button-primary:hover:not(:disabled),
+  .button-danger:hover:not(:disabled) {
+    translate: none;
+    scale: none;
+    rotate: none;
+  }
+  .button-primary:hover:not(:disabled)::after {
+    animation: none;
+  }
+  .glide-pill {
+    transition: opacity 0.15s;
+  }
 }
 
 /* A drop-down's arrow, drawn in place of the system one. */
@@ -88,6 +412,81 @@ select optgroup {
   background-position: right 10px center;
   background-repeat: no-repeat;
   background-size: 16px;
+}
+
+/* The download popup's bar: blues flowing along it (moved by DownloadProgress.tsx at a pace
+   set by the speed), a bright trail, and a fire-coloured rocket with a blue flame at the front. */
+.bar-flow {
+  background-image: linear-gradient(
+    90deg,
+    #3352ea,
+    #7c9bff 18%,
+    #4a6cff 36%,
+    #a3b5ff 56%,
+    #4a6cff 76%,
+    #3352ea
+  );
+  background-size: 220px 100%;
+  background-repeat: repeat-x;
+  box-shadow: 0 0 10px rgb(74 108 255 / 0.5);
+}
+.bar-trail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 56px;
+  max-width: 60%;
+  background: linear-gradient(90deg, rgb(200 214 255 / 0), rgb(220 230 255 / 0.65));
+}
+.bar-rocket {
+  position: absolute;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  translate: -55% -50%;
+  rotate: 45deg;
+  transition: left 0.3s;
+}
+.bar-rocket-lit {
+  filter: drop-shadow(0 0 4px rgb(255 120 60 / 0.85));
+}
+.bar-rocket-flame {
+  transform-box: fill-box;
+  transform-origin: top right;
+  animation: rocket-flame var(--flicker, 0.15s) ease-in-out infinite alternate;
+}
+@keyframes rocket-flame {
+  from {
+    scale: 0.75;
+    opacity: 0.8;
+  }
+  to {
+    scale: 1.1;
+    opacity: 1;
+  }
+}
+/* Before the size is known: a soft light slides back and forth. */
+.bar-searching {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  background: linear-gradient(90deg, rgb(124 155 255 / 0), rgb(124 155 255 / 0.7), rgb(124 155 255 / 0));
+  animation: bar-searching 1.4s ease-in-out infinite alternate;
+}
+@keyframes bar-searching {
+  from {
+    translate: -100% 0;
+  }
+  to {
+    translate: 286% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-rocket-flame,
+  .bar-searching {
+    animation: none;
+  }
 }
 
 /* A progress bar's filled part. */

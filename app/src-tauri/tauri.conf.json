@@ -14,10 +14,10 @@
     "windows": [
       {
         "title": "OmniDM",
-        "width": 1100,
-        "height": 700,
-        "minWidth": 900,
-        "minHeight": 560,
+        "width": 1140,
+        "height": 740,
+        "minWidth": 940,
+        "minHeight": 600,
         "decorations": false,
         "transparent": true,
         "shadow": false,
