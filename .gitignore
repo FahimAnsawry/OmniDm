@@ -11,6 +11,7 @@ dist/
 # Tauri
 /app/src-tauri/target/
 /app/src-tauri/gen/schemas/
+/installer/gen/schemas/
 
 # OmniDM runtime files
 *.omnidm-part
