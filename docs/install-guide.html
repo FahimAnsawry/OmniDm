@@ -184,8 +184,7 @@
         <div class="shot" aria-hidden="true">
           <div class="bar">OmniDM-{{VERSION}}</div>
           <div class="body">
-            <div class="folder"><i></i>OmniDM_chrome</div>
-            <div class="folder"><i></i>OmniDM_firefox</div>
+            <div class="folder"><i></i>Extension</div>
             <div class="folder hl" style="background:rgb(255 255 255 / .04)"><svg class="ext-icon" viewBox="78 70 356 356"><circle cx="256" cy="226" r="122" fill="none" stroke="#ff7a55" stroke-width="56"/></svg>OmniDM-Setup-{{VERSION}}.exe</div>
             <div class="folder"><span class="ext-icon" style="display:inline-block;border-radius:4px;background:#2b6cd8"></span>How to install.html</div>
           </div>
@@ -255,7 +254,7 @@
     <ol class="steps">
       <li>
         <h3>Move the <code>OmniDM_chrome</code> folder somewhere it can stay</h3>
-        <p>For example into <code>Documents</code>. The browser keeps using this folder: if you delete it or move it later,
+        <p>You'll find it in the unzipped <code>Extension</code> folder. Move it into <code>Documents</code>, for example. The browser keeps using this folder: if you delete it or move it later,
           the extension stops working.</p>
       </li>
 
@@ -318,7 +317,7 @@
       </li>
       <li>
         <h3>Click Load Temporary Add-on…</h3>
-        <p>Open the <code>OmniDM_firefox</code> folder and choose the <code>manifest.json</code> file in it.</p>
+        <p>Open <code>Extension\OmniDM_firefox</code> in the unzipped folder and choose the <code>manifest.json</code> file in it.</p>
         <div class="shot" aria-hidden="true">
           <div class="bar">about:debugging</div>
           <div class="body">
@@ -351,7 +350,8 @@
           In Firefox this happens each time Firefox closes (Part 3).</td></tr>
       <tr><td>Updating</td>
         <td>The app updates itself: when a new version is out, OmniDM offers it. Your downloads pause and continue after the restart.
-          For the extension, replace the contents of your <code>OmniDM_chrome</code> folder with the new one, then click the
+          For the extension, replace the contents of your <code>OmniDM_chrome</code> folder with the one from the new zip's
+          <code>Extension</code> folder, then click the
           reload arrow ↻ on OmniDM's card in the extensions page.</td></tr>
       <tr><td>Uninstalling</td>
         <td>Windows Settings → Apps → OmniDM → Uninstall. Then remove the extension in the browser's extensions page.</td></tr>

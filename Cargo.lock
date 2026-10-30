@@ -3190,7 +3190,7 @@ dependencies = [
 
 [[package]]
 name = "omnidm-app"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "omnidm-core",
  "omnidm-ipc",
@@ -3211,7 +3211,7 @@ dependencies = [
 
 [[package]]
 name = "omnidm-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.22.1",
  "clap",
@@ -3230,7 +3230,7 @@ dependencies = [
 
 [[package]]
 name = "omnidm-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "fastrand",
  "omnidm-net",
@@ -3245,7 +3245,7 @@ dependencies = [
 
 [[package]]
 name = "omnidm-host"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "fastrand",
  "omnidm-ipc",
@@ -3257,7 +3257,7 @@ dependencies = [
 
 [[package]]
 name = "omnidm-ipc"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.22.1",
  "fastrand",
@@ -3270,7 +3270,7 @@ dependencies = [
 
 [[package]]
 name = "omnidm-media"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes",
  "cbc",
@@ -3281,7 +3281,7 @@ dependencies = [
 
 [[package]]
 name = "omnidm-net"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cookie_store",
  "httpdate",
@@ -3293,7 +3293,7 @@ dependencies = [
 
 [[package]]
 name = "omnidm-queue"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "jiff",
  "serde",
@@ -3303,7 +3303,7 @@ dependencies = [
 
 [[package]]
 name = "omnidm-service"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes",
  "base64 0.22.1",
@@ -3328,7 +3328,7 @@ dependencies = [
 
 [[package]]
 name = "omnidm-setup"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -3341,7 +3341,7 @@ dependencies = [
 
 [[package]]
 name = "omnidm-store"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "jiff",
  "omnidm-core",
@@ -3354,7 +3354,7 @@ dependencies = [
 
 [[package]]
 name = "omnidm-testserver"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "axum",
  "bytes",
