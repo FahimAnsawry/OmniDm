@@ -12,9 +12,11 @@ type Props = {
   onSearch: (text: string) => void;
   searchInput: RefObject<HTMLInputElement | null>;
   onSettings: () => void;
+  /** Settings is showing: its button stays lit. */
+  settingsOpen: boolean;
 };
 
-export function TitleBar({ search, onSearch, searchInput, onSettings }: Props) {
+export function TitleBar({ search, onSearch, searchInput, onSettings, settingsOpen }: Props) {
   return (
     <header data-tauri-drag-region className="grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center pr-2.5 pl-[18px]">
       <div data-tauri-drag-region className="flex items-center gap-2.5">
@@ -49,8 +51,13 @@ export function TitleBar({ search, onSearch, searchInput, onSettings }: Props) {
           type="button"
           onClick={onSettings}
           aria-label="Settings"
+          aria-pressed={settingsOpen}
           title="Settings"
-          className="flex size-8 items-center justify-center rounded-lg text-[#c9cfdd] hover:bg-white/[0.07] hover:text-[#f4f6fb]"
+          className={`flex size-8 items-center justify-center rounded-lg border ${
+            settingsOpen
+              ? "border-white/[0.12] bg-white/[0.08] text-[#f4f6fb]"
+              : "border-transparent text-[#c9cfdd] hover:bg-white/[0.07] hover:text-[#f4f6fb]"
+          }`}
         >
           <Icon name="settings" />
         </button>

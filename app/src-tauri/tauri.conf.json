@@ -19,6 +19,8 @@
         "minWidth": 900,
         "minHeight": 560,
         "decorations": false,
+        "transparent": true,
+        "shadow": false,
         "label": "main",
         "visible": false
       }

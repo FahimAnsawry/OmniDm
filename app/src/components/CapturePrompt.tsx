@@ -14,8 +14,9 @@ import { formatBytes } from "../lib/format";
 import { Chip, Crumbs, EnterHint, FileIcon, SmallTitleBar, folderCrumbs } from "./Chrome";
 import { DownloadProgress } from "./DownloadProgress";
 import { Icon } from "./Icon";
+import { closeWindow } from "./WindowMotion";
 
-const close = () => getCurrentWindow().close();
+const close = () => closeWindow();
 
 /** "releases.ubuntu.com/24.04.1/": where the file comes from, without its name. */
 function source(url: string): string {

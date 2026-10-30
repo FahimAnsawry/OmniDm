@@ -262,6 +262,36 @@ const PATHS: Record<string, ReactNode> = {
   ),
   up: <path d="m18 15-6-6-6 6" />,
   down: <path d="m6 9 6 6 6-6" />,
+  archive: (
+    <>
+      <path d="M10 12v-1M10 18v-2M10 7V6" />
+      <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+      <path d="M15.5 22H18a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v16a2 2 0 0 0 .274 1.01" />
+      <circle cx="10" cy="20" r="2" />
+    </>
+  ),
+  sliders: (
+    <>
+      <path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3" />
+      <path d="M14 2v4M8 10v4M16 18v4" />
+    </>
+  ),
+  network: (
+    <>
+      <rect x="16" y="16" width="6" height="6" rx="1" />
+      <rect x="2" y="16" width="6" height="6" rx="1" />
+      <rect x="9" y="2" width="6" height="6" rx="1" />
+      <path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3" />
+      <path d="M12 12V8" />
+    </>
+  ),
+  tags: (
+    <>
+      <path d="m15 5 6.3 6.3a2.4 2.4 0 0 1 0 3.4L17 19" />
+      <path d="M9.586 5.586A2 2 0 0 0 8.172 5H3a1 1 0 0 0-1 1v5.172a2 2 0 0 0 .586 1.414L8.29 18.29a2.426 2.426 0 0 0 3.42 0l3.58-3.58a2.426 2.426 0 0 0 0-3.42z" />
+      <circle cx="6.5" cy="9.5" r=".5" fill="currentColor" />
+    </>
+  ),
 };
 
 export type IconName = keyof typeof PATHS;

@@ -15,8 +15,9 @@ import { audioName, kindName, qualityIndex, qualityName } from "../lib/media";
 import { Chip, Crumbs, EnterHint, FileIcon, SmallTitleBar, folderCrumbs } from "./Chrome";
 import { DownloadProgress } from "./DownloadProgress";
 import { Icon, type IconName } from "./Icon";
+import { closeWindow } from "./WindowMotion";
 
-const close = () => getCurrentWindow().close();
+const close = () => closeWindow();
 
 export function MediaWindow({ offer }: { offer: number }) {
   const [url, setUrl] = useState("");

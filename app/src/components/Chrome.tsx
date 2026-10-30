@@ -8,6 +8,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import logo from "../assets/logo.svg";
 import { fileKind } from "../lib/fileKind";
 import { Icon, type IconName } from "./Icon";
+import { closeWindow, minimizeWindow } from "./WindowMotion";
 
 export function Logo({ className = "size-4" }: { className?: string }) {
   return <img src={logo} alt="" draggable={false} className={`shrink-0 ${className}`} />;
@@ -39,9 +40,9 @@ export function WindowButtons({
   );
   return (
     <div className={`flex items-center ${big ? "gap-0" : "gap-1"}`}>
-      {button("Minimize", "minus", () => void window.minimize())}
+      {button("Minimize", "minus", () => void minimizeWindow())}
       {maximize && button("Maximize", "square", () => void window.toggleMaximize())}
-      {button("Close", "close", onClose ?? (() => void window.close()), true)}
+      {button("Close", "close", onClose ?? (() => void closeWindow()), true)}
     </div>
   );
 }

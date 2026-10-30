@@ -7,6 +7,7 @@ import App from "./App";
 import { CapturePrompt } from "./components/CapturePrompt";
 import { DetailsWindow } from "./components/DetailsWindow";
 import { MediaWindow } from "./components/MediaWindow";
+import { WindowMotion } from "./components/WindowMotion";
 import "./index.css";
 
 // A capture prompt's window is labelled `capture-<download id>`, a details window
@@ -16,16 +17,26 @@ const capture = /^capture-(\d+)$/.exec(label);
 const details = /^details-(\d+)$/.exec(label);
 const media = /^media-(\d+)$/.exec(label);
 
+// The details window has the system's title bar, which opens and closes it; the others
+// draw their own and animate themselves on a see-through window.
+if (!details) document.documentElement.classList.add("see-through");
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     {capture ? (
-      <CapturePrompt id={Number(capture[1])} />
+      <WindowMotion>
+        <CapturePrompt id={Number(capture[1])} />
+      </WindowMotion>
     ) : details ? (
       <DetailsWindow id={Number(details[1])} />
     ) : media ? (
-      <MediaWindow offer={Number(media[1])} />
+      <WindowMotion>
+        <MediaWindow offer={Number(media[1])} />
+      </WindowMotion>
     ) : (
-      <App />
+      <WindowMotion hideOnClose>
+        <App />
+      </WindowMotion>
     )}
   </React.StrictMode>,
 );

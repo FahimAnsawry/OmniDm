@@ -114,8 +114,8 @@ pub fn run() {
             };
             if window.label() == "main" {
                 // Closing the window keeps OmniDm (and its downloads) running in the tray.
+                // The page hides it once its closing animation has played.
                 api.prevent_close();
-                let _ = window.hide();
             } else if let Some(id) = capture::download_of(window.label()) {
                 capture::closed_unanswered(window.app_handle(), id);
             } else if let Some(offer) = media::offer_of(window.label()) {

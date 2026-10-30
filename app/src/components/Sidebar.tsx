@@ -5,6 +5,7 @@ import type { QueueSummary } from "../../../protocol/ts/QueueSummary";
 import type { ReactNode } from "react";
 import { type Row, type View, inView, sameView } from "../lib/downloads";
 import { formatSpeed } from "../lib/format";
+import { categoryIcon } from "../lib/categoryLook";
 import { Icon, type IconName } from "./Icon";
 import { SpeedGraph } from "./SpeedGraph";
 
@@ -14,7 +15,6 @@ type Props = {
   categories: CategorySummary[];
   view: View;
   onView: (view: View) => void;
-  onAdd: () => void;
   /** All running downloads together, and the last minute of it. */
   speed: number;
   speeds: number[];
@@ -28,18 +28,7 @@ const STATUSES: { status: Extract<View, { kind: "status" }>["status"]; label: st
   { status: "failed", label: "Failed", icon: "failed" },
 ];
 
-/** An icon for a category, by its usual names. */
-function categoryIcon(name: string): IconName {
-  const n = name.toLowerCase();
-  if (/program|software|app/.test(n)) return "app-window";
-  if (/video|movie|film/.test(n)) return "clapperboard";
-  if (/music|audio|sound/.test(n)) return "music";
-  if (/doc|book|pdf/.test(n)) return "file-text";
-  if (/image|picture|photo/.test(n)) return "image";
-  return "tag";
-}
-
-export function Sidebar({ rows, queues, categories, view, onView, onAdd, speed, speeds }: Props) {
+export function Sidebar({ rows, queues, categories, view, onView, speed, speeds }: Props) {
   const count = (v: View) => rows.reduce((n, row) => n + (inView(row, v) ? 1 : 0), 0);
   const running = rows.filter((r) => r.status === "running").length;
 
@@ -69,17 +58,6 @@ export function Sidebar({ rows, queues, categories, view, onView, onAdd, speed, 
 
   return (
     <nav aria-label="Download lists" className="flex w-[232px] shrink-0 flex-col gap-3.5 px-3 pt-1 pb-3">
-      <button
-        type="button"
-        onClick={onAdd}
-        title="New download (Ctrl+N)"
-        className="button-primary flex h-[38px] shrink-0 items-center gap-2 rounded-[10px] pr-2 pl-3 text-[13px] font-semibold"
-      >
-        <Icon name="plus" />
-        <span className="flex-1 text-left">New download</span>
-        <kbd className="rounded-[5px] bg-white/[0.18] px-1.5 py-0.5 font-sans text-[11.5px] font-semibold">Ctrl N</kbd>
-      </button>
-
       <div className="-mr-2 flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto pr-2 [&:not(:hover)::-webkit-scrollbar-thumb]:bg-transparent">
         <ul className="space-y-0.5">
           {STATUSES.map(({ status, label, icon }) => {

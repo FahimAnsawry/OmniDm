@@ -13,6 +13,7 @@ import { formatBytes, formatElapsed, formatSpeed } from "../lib/format";
 import { Chip, Crumbs, EnterHint, FileIcon, SmallTitleBar, folderCrumbs } from "./Chrome";
 import { Icon } from "./Icon";
 import { SpeedGraph } from "./SpeedGraph";
+import { destroyWindow, showWindowContent } from "./WindowMotion";
 
 type State = "starting" | "running" | "paused" | "failed" | "completed";
 
@@ -107,6 +108,8 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
     const stop = getCurrentWindow().onCloseRequested((event) => {
       if (!allowClose.current && stateRef.current !== "completed") {
         event.preventDefault();
+        // Asked to close by the close button, which already faded the window out.
+        showWindowContent();
         setConfirmCancel(true);
       }
     });
@@ -132,8 +135,7 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
   const act = (action: Promise<unknown>) => action.catch((e) => setError(errorText(e)));
   const closeNow = () => {
     allowClose.current = true;
-    const win = getCurrentWindow();
-    void win.destroy().catch(() => win.close());
+    void destroyWindow();
   };
   const requestClose = () => {
     if (state === "completed") closeNow();

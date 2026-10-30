@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// The top of the downloads panel: the list's name and size, and the actions on the
-// selected downloads.
+// The top of the downloads panel: the list's name and size, the actions on the
+// selected downloads, and New download.
 
 import type { ReactNode } from "react";
 import type { QueueSummary } from "../../../protocol/ts/QueueSummary";
@@ -23,6 +23,7 @@ type Props = {
   onStartQueue: () => void;
   onStopQueue: () => void;
   onSortMenu: (x: number, y: number) => void;
+  onAdd: () => void;
 };
 
 export function PanelHeader(props: Props) {
@@ -75,6 +76,23 @@ export function PanelHeader(props: Props) {
           </button>
         </>
       )}
+      {/* A glass button; its name and shortcut show in a tooltip below it. */}
+      <button
+        type="button"
+        onClick={props.onAdd}
+        aria-label="New download"
+        aria-keyshortcuts="Control+N"
+        className="group relative flex size-9 shrink-0 items-center justify-center rounded-[10px] border border-white/[0.12] bg-white/[0.05] text-[#8ea4ff] transition hover:border-[#6b88ff]/50 hover:bg-[#4a6cff]/[0.18] hover:text-white hover:shadow-[0_6px_18px_-6px_rgb(59_91_255/0.6)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#6b88ff] active:scale-[0.97] active:bg-[#4a6cff]/25"
+      >
+        <Icon name="plus" className="size-[18px]" />
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute top-full right-0 z-10 mt-2 flex items-center gap-2 rounded-lg border border-white/10 bg-[#1a1f30] py-1.5 pr-1.5 pl-2.5 text-xs font-medium whitespace-nowrap text-[#eef1f8] opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-hover:delay-400 group-focus-visible:opacity-100"
+        >
+          New download
+          <kbd className="rounded-[5px] bg-white/[0.07] px-1.5 py-0.5 font-sans font-semibold text-[#9aa3b8]">Ctrl N</kbd>
+        </span>
+      </button>
     </div>
   );
 }

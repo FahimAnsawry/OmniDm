@@ -253,6 +253,7 @@ function App() {
         }}
         searchInput={searchInput}
         onSettings={() => setPage((current) => (current === "settings" ? "downloads" : "settings"))}
+        settingsOpen={page === "settings"}
       />
       {afterQueue && <AfterQueueBanner notice={afterQueue} onClose={() => setAfterQueue(null)} />}
       {error && (
@@ -268,7 +269,7 @@ function App() {
         </div>
       )}
       {page === "settings" ? (
-        <div className="mx-2.5 mb-2.5 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0f1322]">
+        <div className="flex min-h-0 flex-1 pr-2.5 pb-2.5">
           <SettingsPage categories={categories} onChanged={refresh} onClose={() => setPage("downloads")} />
         </div>
       ) : (
@@ -282,7 +283,6 @@ function App() {
               setView(v);
               setSort(null);
             }}
-            onAdd={() => setAdding({})}
             speed={totalSpeed}
             speeds={speeds}
           />
@@ -301,6 +301,7 @@ function App() {
               onStartQueue={() => queue && run(api.startQueue(queue.name))}
               onStopQueue={() => queue && run(api.stopQueue(queue.name))}
               onSortMenu={(x, y) => setSortMenu({ x, y })}
+              onAdd={() => setAdding({})}
             />
             {empty ? (
               <>

@@ -19,6 +19,12 @@ body {
   background: #0b0e1a;
 }
 
+/* A window that animates its opening: the desktop shows around the growing content. */
+html.see-through,
+html.see-through body {
+  background: transparent;
+}
+
 select {
   color-scheme: dark;
 }
@@ -58,6 +64,25 @@ select optgroup {
 }
 .button-primary:hover {
   background: linear-gradient(180deg, #5878ff, #3352ea);
+}
+
+/* The red button that removes something. */
+.button-danger {
+  background: linear-gradient(180deg, #f2555a, #d42a30);
+  border: 1px solid rgb(255 255 255 / 0.18);
+  box-shadow: 0 8px 24px -8px rgb(229 72 77 / 0.7);
+  color: #fff;
+}
+.button-danger:hover {
+  background: linear-gradient(180deg, #f6666b, #dc3439);
+}
+
+/* A drop-down's arrow, drawn in place of the system one. */
+.select-chevron {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b93a9' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-position: right 10px center;
+  background-repeat: no-repeat;
+  background-size: 16px;
 }
 
 /* A progress bar's filled part. */

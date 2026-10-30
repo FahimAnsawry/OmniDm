@@ -10,10 +10,10 @@ import type { MediaInfo } from "../../../protocol/ts/MediaInfo";
 import type { QueueSummary } from "../../../protocol/ts/QueueSummary";
 import { api, errorText } from "../lib/api";
 import { looksLikeStream } from "../lib/media";
-import { Button, Field, FolderField, inputClass, selectClass } from "./Fields";
+import { FileIcon } from "./Chrome";
+import { Button, Field, FolderField, inputBase } from "./Fields";
+import { Icon } from "./Icon";
 import { MediaPicker } from "./MediaPicker";
-
-const CONNECTIONS = [1, 2, 4, 8, 16, 32];
 
 /** Reading a video link's playlist. */
 type MediaState = { status: "reading" } | { status: "ready"; info: MediaInfo } | { status: "failed"; error: string };
@@ -44,7 +44,6 @@ export function AddDialog({
   /** The user chose the folder; the link's category no longer changes it. */
   const [folderChosen, setFolderChosen] = useState(false);
   const [category, setCategory] = useState<string | undefined>();
-  const [connections, setConnections] = useState("");
   const [queue, setQueue] = useState(queues[0]?.name ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,7 +142,6 @@ export function AddDialog({
         url,
         fileName: name.trim() || undefined,
         folder,
-        connections: connections ? Number(connections) : undefined,
         queue: inQueue,
       });
       onClose();
@@ -161,77 +159,90 @@ export function AddDialog({
         e.preventDefault();
         onClose();
       }}
-      className="m-auto w-[34rem] max-w-[calc(100vw-2rem)] rounded-xl border border-neutral-200 bg-white p-0 text-neutral-900 shadow-2xl backdrop:bg-black/30 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+      className="m-auto w-[560px] max-w-[calc(100vw-2rem)] rounded-2xl border border-white/[0.12] bg-[#12172a] p-0 font-sans text-[#f4f6fb] shadow-[0_32px_64px_-12px_rgb(0_0_0/0.75)] backdrop:bg-[#04060c]/70"
     >
       <form
         onSubmit={(e) => {
           e.preventDefault();
           add();
         }}
-        className="space-y-3.5 p-5"
+        className="flex flex-col gap-4 p-5"
       >
-        <h2 id="add-title" className="text-[15px] font-semibold">
-          Add download
-        </h2>
+        <div className="flex items-start gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] border border-[#6b88ff]/25 bg-[#4a6cff]/15 text-[#8ea4ff]">
+            <Icon name="link" className="size-[18px]" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 id="add-title" className="text-base font-semibold">
+              Add download
+            </h2>
+            <p className="mt-0.5 text-xs text-[#8b93a9]">Paste a link to a file, or to a page with a video.</p>
+          </div>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="flex size-8 items-center justify-center rounded-lg text-[#8b93a9] hover:bg-white/[0.07] hover:text-[#f4f6fb]"
+          >
+            <Icon name="close" />
+          </button>
+        </div>
         <Field label="Link" htmlFor="add-url">
-          <input
-            id="add-url"
-            value={url}
-            onChange={(e) => {
-              setUrl(e.target.value);
-              setError(null);
-            }}
-            placeholder="https://example.com/file.zip"
-            spellCheck={false}
-            autoFocus
-            className={inputClass}
-          />
+          <div className="relative">
+            <Icon name="link" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[#8ea4ff]" />
+            <input
+              id="add-url"
+              value={url}
+              onChange={(e) => {
+                setUrl(e.target.value);
+                setError(null);
+              }}
+              placeholder="https://example.com/file.zip"
+              spellCheck={false}
+              autoFocus
+              className={`h-10 pr-3 pl-9 ${inputBase}`}
+            />
+          </div>
         </Field>
         {media?.status === "reading" && (
-          <p role="status" className="text-[13px] text-neutral-500 dark:text-neutral-400">
+          <p role="status" className="-mt-1 text-[13px] text-[#8b93a9]">
             Reading the video… (a YouTube video can take a few seconds)
           </p>
         )}
         {media?.status === "failed" && (
-          <p role="alert" className="text-[13px] text-red-700 dark:text-red-400">
+          <p role="alert" className="-mt-1 text-[13px] text-[#ff9a9e]">
             {media.error}
           </p>
         )}
         {info && (
           <MediaPicker info={info} quality={quality} audio={audio} onQuality={chooseQuality} onAudio={setAudio} />
         )}
-        <div className="flex gap-3">
-          <div className="min-w-0 flex-1">
-            <Field label="File name" htmlFor="add-name">
-              <input
-                id="add-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder={stream ? (info?.title ?? "The video's name") : "The server's name"}
-                spellCheck={false}
-                className={inputClass}
+        <Field label="File name" htmlFor="add-name">
+          <div className="relative">
+            {(name || url) && (
+              <FileIcon
+                name={name || (stream ? "video.mp4" : url.split(/[?#]/)[0])}
+                className="pointer-events-none absolute top-1/2 left-3 h-5 w-[17px] -translate-y-1/2"
               />
-            </Field>
+            )}
+            <input
+              id="add-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={stream ? (info?.title ?? "The video's name") : "The server's name"}
+              spellCheck={false}
+              className={`h-10 pr-3 ${name || url ? "pl-10" : "pl-3"} ${inputBase}`}
+            />
           </div>
-          {!stream && (
-            <Field label="Connections" htmlFor="add-connections">
-              <select
-                id="add-connections"
-                value={connections}
-                onChange={(e) => setConnections(e.target.value)}
-                className={`${selectClass} w-24`}
-              >
-                <option value="">Auto</option>
-                {CONNECTIONS.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          )}
-        </div>
-        <Field label={category ? `Save in (${category})` : "Save in"} htmlFor="add-folder">
+        </Field>
+        <Field
+          label={
+            <>
+              Save in{category && <span className="text-[#8ea4ff]"> · {category}</span>}
+            </>
+          }
+          htmlFor="add-folder"
+        >
           <FolderField
             id="add-folder"
             value={folder}
@@ -239,32 +250,36 @@ export function AddDialog({
               setFolder(f);
               setFolderChosen(true);
             }}
+            tall
           />
         </Field>
         {error && (
-          <p role="alert" className="text-[13px] text-red-700 dark:text-red-400">
+          <p role="alert" className="text-[13px] text-[#ff9a9e]">
             {error}
           </p>
         )}
-        <div className="flex items-center justify-end gap-2 pt-1">
-          <Button onClick={onClose} className="mr-auto">
+        <div className="flex items-center gap-2 border-t border-white/[0.06] pt-4">
+          <Button ghost onClick={onClose} className="mr-auto -ml-2">
             Cancel
           </Button>
           {queues.length > 0 && (
-            <div className="flex">
-              <Button
+            <div className="flex h-9 items-center rounded-[10px] border border-white/[0.12] bg-white/[0.05]">
+              <button
+                type="button"
                 onClick={() => add(queue)}
                 disabled={busy || (stream && !info)}
-                className="rounded-r-none"
                 title={`Add to ${queue} without starting`}
+                className="flex h-full items-center gap-1.5 rounded-l-[10px] px-3 text-[13px] font-semibold hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-40"
               >
+                <Icon name="clock" className="size-3.5 text-[#c9cfdd]" />
                 Later
-              </Button>
+              </button>
+              <span className="h-5 w-px bg-white/[0.12]" />
               <select
                 aria-label="Queue"
                 value={queue}
                 onChange={(e) => setQueue(e.target.value)}
-                className={`${selectClass} -ml-px max-w-32 rounded-l-none`}
+                className="select-chevron h-full max-w-36 cursor-pointer appearance-none rounded-r-[10px] bg-transparent pr-8 pl-2.5 text-[12.5px] font-medium text-[#c9cfdd] hover:bg-white/[0.06] focus:outline-none"
               >
                 {queues.map((q) => (
                   <option key={q.queueId} value={q.name}>
@@ -274,8 +289,11 @@ export function AddDialog({
               </select>
             </div>
           )}
-          <Button type="submit" primary disabled={busy || (stream && !info)}>
+          <Button type="submit" primary disabled={busy || (stream && !info)} className="pr-1.5">
             Download now
+            <span className="flex items-center rounded-md bg-white/[0.18] px-1.5 py-0.5">
+              <Icon name="enter" className="size-3.5" />
+            </span>
           </Button>
         </div>
       </form>

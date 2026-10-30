@@ -35,10 +35,13 @@ pub fn open(app: &AppHandle, about: &AskAbout) {
     let built = WebviewWindowBuilder::new(app, &label, WebviewUrl::App("index.html".into()))
         .title("Download file")
         .inner_size(560.0, 360.0)
-        .background_color(Color(0x0b, 0x0e, 0x1a, 0xff))
         .visible(false)
-        // The window draws its own title bar.
+        // The window draws its own title bar, and is see-through so its content can
+        // grow in; its shadow comes on once the content is there.
         .decorations(false)
+        .transparent(true)
+        .background_color(Color(0, 0, 0, 0))
+        .shadow(false)
         .resizable(false)
         .maximizable(false)
         .always_on_top(true)

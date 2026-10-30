@@ -13,8 +13,8 @@ use tauri::{AppHandle, Emitter, Manager as _, WebviewUrl, WebviewWindowBuilder};
 /// The window of the video with this offer number.
 const LABEL_PREFIX: &str = "media-";
 
-/// The page's background (`#0b0e1a` in index.css), shown before the page has drawn.
-const BACKGROUND: Color = Color(0x0b, 0x0e, 0x1a, 0xff);
+/// Clear: the page draws the window's background, growing in.
+const BACKGROUND: Color = Color(0, 0, 0, 0);
 
 /// Opens the window for a video the extension found.
 pub fn open(app: &AppHandle, offer: i64) {
@@ -27,13 +27,16 @@ pub fn open(app: &AppHandle, offer: i64) {
         .title("Download video")
         // The same size as the download window.
         .inner_size(560.0, 360.0)
-        // The window draws its own title bar.
+        // The window draws its own title bar, and is see-through so its content can
+        // grow in; its shadow comes on once the content is there.
         .decorations(false)
+        .transparent(true)
+        .shadow(false)
         .resizable(false)
         .maximizable(false)
         .always_on_top(true)
         .center()
-        // Hidden, on the page's dark colour, until the page has loaded: no white flash.
+        // Hidden until the page has loaded: no white flash.
         .background_color(BACKGROUND)
         .visible(false)
         .on_page_load(|window, payload| {
