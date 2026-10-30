@@ -1,16 +1,21 @@
 @import "tailwindcss";
-@import "@fontsource-variable/inter";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+@import "@fontsource-variable/jetbrains-mono";
 
 /* Every window is dark: the premium look has no light version. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: "Inter Variable", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "Geist Variable", "Segoe UI", system-ui, sans-serif;
+  /* Numbers: every digit the same width, so speeds and sizes hold still. */
+  --font-mono: "Geist Mono Variable", Consolas, monospace;
+  /* The OmniDM wordmark. */
+  --font-logo: "JetBrains Mono Variable", Consolas, monospace;
 }
 
 :root {
   color-scheme: dark;
-  font-feature-settings: "cv11", "ss01";
   -webkit-font-smoothing: antialiased;
 }
 
@@ -106,4 +111,21 @@ select optgroup {
 ::-webkit-scrollbar-track,
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* Everything clickable shows the hand cursor; a disabled one doesn't. */
+@layer base {
+  button,
+  [role="button"],
+  [role="menuitem"],
+  [role="tab"],
+  summary,
+  select {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"],
+  select:disabled {
+    cursor: not-allowed;
+  }
 }

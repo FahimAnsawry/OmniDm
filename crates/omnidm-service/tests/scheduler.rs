@@ -198,7 +198,7 @@ async fn times_before_the_first_tick_are_not_caught_up_on() {
     let mut env = env().await;
     env.queue_long_download();
     env.schedule(daily("02:00", None)).unwrap();
-    // OmniDm started at 03:00, after the start time.
+    // OmniDM started at 03:00, after the start time.
     env.scheduler.tick(&at("2026-06-10T03:00"));
     assert!(!env.main_running());
 }
@@ -388,7 +388,7 @@ impl Env {
             .unwrap();
     }
 
-    /// Runs the after-queue watcher; the returned flag is set if OmniDm is told to quit.
+    /// Runs the after-queue watcher; the returned flag is set if OmniDM is told to quit.
     fn watch_after_queue(&self, countdown: Duration) -> Arc<AtomicBool> {
         let quit = Arc::new(AtomicBool::new(false));
         let flag = quit.clone();

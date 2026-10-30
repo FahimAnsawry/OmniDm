@@ -55,7 +55,7 @@ pub fn open(app: &AppHandle, about: &AskAbout) {
         })
         .build();
     if let Err(e) = built {
-        eprintln!("OmniDm: can't open the download window: {e}");
+        eprintln!("OmniDM: can't open the download window: {e}");
     }
 }
 

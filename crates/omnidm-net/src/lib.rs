@@ -34,7 +34,7 @@ pub fn download_client_with(plan: proxy::ProxyPlan) -> reqwest::Result<reqwest::
     builder
         .http1_only()
         .redirect(reqwest::redirect::Policy::none())
-        .user_agent(concat!("OmniDm/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("OmniDM/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(Duration::from_secs(30))
         .pool_max_idle_per_host(32)
         .build()

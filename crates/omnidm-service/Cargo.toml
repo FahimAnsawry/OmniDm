@@ -1,6 +1,6 @@
 [package]
 name = "omnidm-service"
-description = "The OmniDm app's backend: runs downloads and answers the extension and the CLI."
+description = "The OmniDM app's backend: runs downloads and answers the extension and the CLI."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

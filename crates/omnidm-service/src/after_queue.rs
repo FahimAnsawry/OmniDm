@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! What happens when a queue finishes: sleep, hibernate, shut down or quit OmniDm, after
+//! What happens when a queue finishes: sleep, hibernate, shut down or quit OmniDM, after
 //! a countdown the user can cancel.
 //!
 //! Only a queue that finishes by itself after trying something triggers it, never an
@@ -25,7 +25,7 @@ pub const COUNTDOWN: Duration = Duration::from_secs(60);
 /// How often it looks whether other downloads have ended.
 const WAIT_POLL: Duration = Duration::from_secs(1);
 
-/// Quits OmniDm (the `quit` action).
+/// Quits OmniDM (the `quit` action).
 pub type QuitHandler = Arc<dyn Fn() + Send + Sync>;
 
 /// Watches for finished queues for as long as the app runs.

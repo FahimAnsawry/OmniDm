@@ -11,7 +11,7 @@ export function EmptyState({ onPaste, onExtension }: { onPaste: () => void; onEx
       <img src={picture} alt="" draggable={false} className="size-40" />
       <h2 className="mt-3.5 text-[22px] font-semibold tracking-[-0.02em] text-[#f4f6fb]">No downloads yet</h2>
       <p className="mt-2 text-center text-[13px] leading-normal text-[#8b93a9]">
-        Click a download link in your browser and OmniDm catches it.
+        Click a download link in your browser and OmniDM catches it.
         <br />
         Or paste a link to start right away.
       </p>

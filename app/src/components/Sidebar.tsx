@@ -54,7 +54,7 @@ export function Sidebar({ rows, queues, categories, view, onView, speed, speeds 
     );
   };
 
-  const number = (n: number) => <span className="text-xs font-medium text-[#8b93a9] tabular-nums">{n}</span>;
+  const number = (n: number) => <span className="font-mono text-xs font-medium text-[#8b93a9] tabular-nums">{n}</span>;
 
   return (
     <nav aria-label="Download lists" className="flex w-[232px] shrink-0 flex-col gap-3.5 px-3 pt-1 pb-3">
@@ -91,7 +91,7 @@ export function Sidebar({ rows, queues, categories, view, onView, speed, speeds 
                     className="mr-1 size-1.5 rounded-full bg-[#2fd3a0] shadow-[0_0_6px_#2fd3a0]"
                   />
                 ) : q.nextStart ? (
-                  <span title={`Starts ${q.nextStart}`} className="text-xs font-medium text-[#8b93a9] tabular-nums">
+                  <span title={`Starts ${q.nextStart}`} className="font-mono text-xs font-medium text-[#8b93a9] tabular-nums">
                     {q.nextStart.slice(-5)}
                   </span>
                 ) : undefined,
@@ -121,7 +121,7 @@ export function Sidebar({ rows, queues, categories, view, onView, speed, speeds 
           <Icon name="arrow-down" className={`ml-auto size-3 ${running ? "text-[#8ea4ff]" : "text-[#6b7390]"}`} />
         </div>
         <p
-          className={`text-lg font-semibold tracking-[-0.01em] tabular-nums ${
+          className={`font-mono text-lg font-semibold tracking-[-0.01em] tabular-nums ${
             running ? "text-[#f4f6fb]" : "text-[#c9cfdd]"
           }`}
         >

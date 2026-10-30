@@ -2,7 +2,7 @@
 
 import type { BrowserCookie } from '../../protocol/ts/BrowserCookie';
 
-/** The subset of `cookies.Cookie` OmniDm reads. */
+/** The subset of `cookies.Cookie` OmniDM reads. */
 export interface CookieLike {
   name: string;
   value: string;
@@ -14,7 +14,7 @@ export interface CookieLike {
   expirationDate?: number;
 }
 
-/** The parts of a browser cookie OmniDm needs to send it to the right places. */
+/** The parts of a browser cookie OmniDM needs to send it to the right places. */
 export function toBrowserCookie(cookie: CookieLike): BrowserCookie {
   const result: BrowserCookie = {
     name: cookie.name,

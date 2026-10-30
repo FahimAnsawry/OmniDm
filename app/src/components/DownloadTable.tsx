@@ -394,26 +394,26 @@ const DownloadRow = memo(function DownloadRow({
       }`}
     >
       <div role="gridcell" className="flex min-w-0 items-center gap-3" title={`${name}\n${row.url}`}>
-        <FileIcon name={name} flat className="h-[31px] w-[26px]" />
+        <FileIcon name={name} flat className="size-[18px]" />
         <span className={`truncate text-[#f4f6fb] ${selected ? "font-semibold" : "font-medium"}`}>{name}</span>
       </div>
-      <div role="gridcell" className="text-right text-[#8b93a9] tabular-nums">
+      <div role="gridcell" className="text-right font-mono text-[#8b93a9] tabular-nums">
         {row.total != null ? formatBytes(row.total) : ""}
       </div>
       <div role="gridcell" className="min-w-0">
         <Progress row={row} onRetry={onRetry} />
         {row.error && !isActive(row.status) && <span className="sr-only">: {row.error}</span>}
       </div>
-      <div role="gridcell" className="text-right tabular-nums">
+      <div role="gridcell" className="text-right font-mono tabular-nums">
         {value(running && row.speed != null ? formatSpeed(row.speed) : null)}
       </div>
-      <div role="gridcell" className="text-right tabular-nums">
+      <div role="gridcell" className="text-right font-mono tabular-nums">
         {value(Number.isFinite(left) ? formatDuration(left) : null)}
       </div>
       <div
         role="gridcell"
         title={formatFullDate(row.addedAt)}
-        className="text-right whitespace-nowrap text-[#8b93a9] tabular-nums"
+        className="text-right font-mono whitespace-nowrap text-[#8b93a9] tabular-nums"
       >
         {formatAdded(row.addedAt)}
       </div>

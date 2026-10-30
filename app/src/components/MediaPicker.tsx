@@ -103,13 +103,13 @@ function QualityCells({ quality: q }: { quality: MediaQuality }) {
   return (
     <>
       <span className="w-20 font-medium tabular-nums">{qualityName(q)}</span>
-      <span className="flex-1 text-[#8b93a9] tabular-nums">
+      <span className="flex-1 font-mono text-[#8b93a9] tabular-nums">
         {q.width != null && q.height != null && `${q.width}×${q.height}`}
       </span>
-      <span className="text-[#8b93a9] tabular-nums">
+      <span className="font-mono text-[#8b93a9] tabular-nums">
         {q.bandwidth > 0 && formatBitrate(q.bandwidth)}
       </span>
-      <span className="w-20 text-right tabular-nums">{q.size != null && `~${formatBytes(q.size)}`}</span>
+      <span className="w-20 text-right font-mono tabular-nums">{q.size != null && `~${formatBytes(q.size)}`}</span>
     </>
   );
 }

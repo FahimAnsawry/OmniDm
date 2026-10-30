@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// The connection to the OmniDm app through the native messaging host (plan §8, §10):
+// The connection to the OmniDM app through the native messaging host (plan §8, §10):
 // requests with replies matched by id, answers to the app's own requests, and the
 // connection state shown in the popup.
 
@@ -76,7 +76,7 @@ export class NativeLink {
     }
     return this.open().then((connected) => {
       if (!connected || !this.port) {
-        throw new Error(`OmniDm is not available (${this.status})`);
+        throw new Error(`OmniDM is not available (${this.status})`);
       }
       return this.send(this.port, message, timeoutMs);
     });

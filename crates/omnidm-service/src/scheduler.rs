@@ -7,7 +7,7 @@
 //! due in it is acted on, even late: a PC that slept through 02:00 without a wake timer
 //! starts the queue when it wakes. When both came due (it slept through the start *and*
 //! the stop), the later one wins, so the queue doesn't start after its stop time. Times
-//! from before OmniDm started are not caught up on.
+//! from before OmniDM started are not caught up on.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -81,14 +81,14 @@ impl Scheduler {
         if wake != self.wake {
             match self.power.wake_at(wake) {
                 Ok(()) => self.wake = wake,
-                Err(e) => eprintln!("OmniDm: can't set the wake timer: {e}"),
+                Err(e) => eprintln!("OmniDM: can't set the wake timer: {e}"),
             }
         }
         let busy = self.manager.has_running();
         if self.awake != Some(busy) {
             match self.power.keep_awake(busy) {
                 Ok(()) => self.awake = Some(busy),
-                Err(e) => eprintln!("OmniDm: can't keep the PC awake: {e}"),
+                Err(e) => eprintln!("OmniDM: can't keep the PC awake: {e}"),
             }
         }
         next

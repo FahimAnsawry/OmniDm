@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Opened once, right after the extension is installed on a PC without the OmniDm app:
+// Opened once, right after the extension is installed on a PC without the OmniDM app:
 // says what else is needed, and notices by itself when the app is there.
 
 import { type ReactNode, useEffect, useState } from 'react';
@@ -43,12 +43,12 @@ function App() {
     <main className="min-h-screen bg-neutral-50 px-6 py-12 font-sans text-[15px] text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <div className="mx-auto max-w-xl space-y-6">
         <header className="space-y-2">
-          <p className="text-sm font-medium text-sky-700 dark:text-sky-400">OmniDm extension installed</p>
+          <p className="text-sm font-medium text-sky-700 dark:text-sky-400">OmniDM extension installed</p>
           <h1 className="text-2xl font-semibold">
-            {found ? "You're all set" : 'One more step: install the OmniDm app'}
+            {found ? "You're all set" : 'One more step: install the OmniDM app'}
           </h1>
           <p className="text-neutral-600 dark:text-neutral-400">
-            This extension hands your downloads to the OmniDm app on this PC, which downloads them faster and
+            This extension hands your downloads to the OmniDM app on this PC, which downloads them faster and
             can pause and resume them. {found ? '' : "The app isn't on this PC yet, so for now downloads stay in the browser."}
           </p>
         </header>
@@ -68,36 +68,36 @@ function App() {
             }`}
           />
           {found
-            ? 'OmniDm is connected. Downloads you start in the browser now go to OmniDm. You can close this tab.'
+            ? 'OmniDM is connected. Downloads you start in the browser now go to OmniDM. You can close this tab.'
             : status === 'notRunning'
-              ? "OmniDm is installed but didn't start. Start OmniDm from the Start menu; this page will notice."
-              : 'Looking for OmniDm… This page notices by itself once it is installed.'}
+              ? "OmniDM is installed but didn't start. Start OmniDM from the Start menu; this page will notice."
+              : 'Looking for OmniDM… This page notices by itself once it is installed.'}
         </div>
 
         {!found && (
           <ol className="space-y-4">
-            <Step n={1} title="Download OmniDm for Windows">
+            <Step n={1} title="Download OmniDM for Windows">
               <a
                 href={DOWNLOAD_PAGE}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-2 inline-block rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700"
               >
-                Get OmniDm
+                Get OmniDM
               </a>
             </Step>
             <Step n={2} title="Run the installer">
-              It needs no administrator rights, and it connects OmniDm to Chrome, Edge and Firefox.
+              It needs no administrator rights, and it connects OmniDM to Chrome, Edge and Firefox.
             </Step>
-            <Step n={3} title="Come back to this tab">It turns green once OmniDm is found.</Step>
+            <Step n={3} title="Come back to this tab">It turns green once OmniDM is found.</Step>
           </ol>
         )}
 
         {!found && (
           <details className="text-sm text-neutral-600 dark:text-neutral-400">
-            <summary className="cursor-pointer">Running OmniDm from its source code?</summary>
+            <summary className="cursor-pointer">Running OmniDM from its source code?</summary>
             <p className="mt-2">
-              Connect it to your browsers once: in PowerShell, open the folder that has the OmniDm app and
+              Connect it to your browsers once: in PowerShell, open the folder that has the OmniDM app and
               run{' '}
               <code className="rounded bg-neutral-200 px-1 py-0.5 text-xs dark:bg-neutral-800">
                 .\omnidm-host.exe --register

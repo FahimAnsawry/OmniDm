@@ -45,7 +45,8 @@ export function AddDialog({
   const [folderChosen, setFolderChosen] = useState(false);
   const [category, setCategory] = useState<string | undefined>();
   const [queue, setQueue] = useState(queues[0]?.name ?? "");
-  const [busy, setBusy] = useState(false);
+  /** Adding: the link is being checked, started by "Download now" or "Later". */
+  const [busy, setBusy] = useState<"now" | "later" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const stream = looksLikeStream(url);
   const [media, setMedia] = useState<MediaState | null>(null);
@@ -114,6 +115,7 @@ export function AddDialog({
   }, [url, name, folderChosen, videoName]);
 
   const add = async (inQueue?: string) => {
+    if (busy) return;
     if (!isWebLink(url)) {
       setError("Enter a link that starts with http:// or https://");
       return;
@@ -122,7 +124,7 @@ export function AddDialog({
       setError(media?.status === "failed" ? media.error : "Wait until the video has been read");
       return;
     }
-    setBusy(true);
+    setBusy(inQueue ? "later" : "now");
     try {
       if (info) {
         const chosen = info.qualities[quality];
@@ -147,7 +149,7 @@ export function AddDialog({
       onClose();
     } catch (e) {
       setError(errorText(e));
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -200,15 +202,17 @@ export function AddDialog({
               placeholder="https://example.com/file.zip"
               spellCheck={false}
               autoFocus
-              className={`h-10 pr-3 pl-9 ${inputBase}`}
+              className={`h-10 pl-9 ${media?.status === "reading" ? "pr-9" : "pr-3"} ${inputBase}`}
             />
+            {media?.status === "reading" && (
+              <Icon
+                name="loader"
+                className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-[#8ea4ff] motion-safe:animate-spin"
+              />
+            )}
           </div>
         </Field>
-        {media?.status === "reading" && (
-          <p role="status" className="-mt-1 text-[13px] text-[#8b93a9]">
-            Reading the video… (a YouTube video can take a few seconds)
-          </p>
-        )}
+        {media?.status === "reading" && <ReadingVideo />}
         {media?.status === "failed" && (
           <p role="alert" className="-mt-1 text-[13px] text-[#ff9a9e]">
             {media.error}
@@ -222,7 +226,8 @@ export function AddDialog({
             {(name || url) && (
               <FileIcon
                 name={name || (stream ? "video.mp4" : url.split(/[?#]/)[0])}
-                className="pointer-events-none absolute top-1/2 left-3 h-5 w-[17px] -translate-y-1/2"
+                flat
+                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
               />
             )}
             <input
@@ -267,11 +272,14 @@ export function AddDialog({
               <button
                 type="button"
                 onClick={() => add(queue)}
-                disabled={busy || (stream && !info)}
+                disabled={busy != null || (stream && !info)}
                 title={`Add to ${queue} without starting`}
                 className="flex h-full items-center gap-1.5 rounded-l-[10px] px-3 text-[13px] font-semibold hover:bg-white/[0.06] disabled:pointer-events-none disabled:opacity-40"
               >
-                <Icon name="clock" className="size-3.5 text-[#c9cfdd]" />
+                <Icon
+                  name={busy === "later" ? "loader" : "clock"}
+                  className={`size-3.5 text-[#c9cfdd] ${busy === "later" ? "motion-safe:animate-spin" : ""}`}
+                />
                 Later
               </button>
               <span className="h-5 w-px bg-white/[0.12]" />
@@ -289,14 +297,48 @@ export function AddDialog({
               </select>
             </div>
           )}
-          <Button type="submit" primary disabled={busy || (stream && !info)} className="pr-1.5">
-            Download now
-            <span className="flex items-center rounded-md bg-white/[0.18] px-1.5 py-0.5">
-              <Icon name="enter" className="size-3.5" />
-            </span>
-          </Button>
+          {busy === "now" ? (
+            // Stays lit while the link is checked, so it reads as working, not unavailable.
+            <Button type="submit" primary aria-disabled className="pointer-events-none">
+              <Icon name="loader" className="size-3.5 motion-safe:animate-spin" />
+              Checking the link…
+            </Button>
+          ) : (
+            <Button type="submit" primary disabled={busy != null || (stream && !info)} className="pr-1.5">
+              Download now
+              <span className="flex items-center rounded-md bg-white/[0.18] px-1.5 py-0.5">
+                <Icon name="enter" className="size-3.5" />
+              </span>
+            </Button>
+          )}
         </div>
       </form>
     </dialog>
+  );
+}
+
+/** While a video link is read: a spinner and the outline of the quality list to come. */
+function ReadingVideo() {
+  return (
+    <div role="status" className="-mt-1 space-y-2.5">
+      <p className="flex items-center gap-2 text-xs font-medium text-[#c9cfdd]">
+        <Icon name="loader" className="size-3.5 text-[#8ea4ff] motion-safe:animate-spin" />
+        Reading the video…
+        <span className="font-normal text-[#8b93a9]">a YouTube video can take a few seconds</span>
+      </p>
+      <div aria-hidden="true" className="space-y-0.5 rounded-[10px] border border-white/[0.08] bg-white/[0.02] p-1">
+        {[0.5, 0.42, 0.34].map((width, i) => (
+          <div key={i} className="flex h-[34px] items-center gap-3 px-2.5">
+            <span className="size-3.5 rounded-full bg-white/[0.08]" />
+            <span className="h-2.5 w-16 rounded bg-white/[0.08] motion-safe:animate-pulse" />
+            <span
+              className="h-2.5 rounded bg-white/[0.06] motion-safe:animate-pulse"
+              style={{ width: `${width * 100}%` }}
+            />
+            <span className="ml-auto h-2.5 w-12 rounded bg-white/[0.06] motion-safe:animate-pulse" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

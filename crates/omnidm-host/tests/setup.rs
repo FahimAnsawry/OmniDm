@@ -51,7 +51,7 @@ fn the_manifests_name_the_host_and_allow_only_omnidm() {
         chromium,
         json!({
             "name": "io.github.fahimansawry.omnidm.host",
-            "description": "OmniDm native messaging host",
+            "description": "OmniDM native messaging host",
             "path": host.to_str().unwrap(),
             "type": "stdio",
             "allowed_origins": origins,

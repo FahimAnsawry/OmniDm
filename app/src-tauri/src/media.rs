@@ -47,7 +47,7 @@ pub fn open(app: &AppHandle, offer: i64) {
         })
         .build();
     if let Err(e) = built {
-        eprintln!("OmniDm: can't open the video window: {e}");
+        eprintln!("OmniDM: can't open the video window: {e}");
     }
 }
 

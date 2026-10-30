@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Native messaging host that connects the OmniDm browser extension to the app.
+//! Native messaging host that connects the OmniDM browser extension to the app.
 //!
 //! Browsers start it with their own arguments (Chrome: the extension's origin; Firefox:
 //! the manifest path and add-on ID), which it ignores. `--register` and `--unregister`
@@ -46,7 +46,7 @@ fn main() -> ExitCode {
         // OMNIDM_PIPE is for development and tests; browsers never set it.
         let pipe_name =
             std::env::var("OMNIDM_PIPE").unwrap_or_else(|_| omnidm_ipc::pipe::default_pipe_name());
-        // Only an OmniDm app next to the host may serve the pipe; without one, nothing is
+        // Only an OmniDM app next to the host may serve the pipe; without one, nothing is
         // trusted (an empty list would switch the check off).
         let apps = app_paths(&host_exe);
         let Some(newest) = apps.first().cloned() else {
@@ -64,7 +64,7 @@ fn main() -> ExitCode {
             Err(e) => {
                 // Exiting closes the connection, so the extension hands the
                 // download back to the browser at once.
-                eprintln!("omnidm-host: can't reach OmniDm: {e}");
+                eprintln!("omnidm-host: can't reach OmniDM: {e}");
                 return ExitCode::FAILURE;
             }
         };

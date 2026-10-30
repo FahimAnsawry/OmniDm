@@ -1,6 +1,6 @@
-# OmniDm
+# OmniDM
 
-OmniDm is a free, open-source download manager for Windows, with a companion browser extension for Chrome, Edge, Brave, Opera, Vivaldi and Firefox.
+OmniDM is a free, open-source download manager for Windows, with a companion browser extension for Chrome, Edge, Brave, Opera, Vivaldi and Firefox.
 
 > **Status:** early development (milestone M0, project setup). Nothing is ready to use yet.
 
@@ -8,7 +8,7 @@ OmniDm is a free, open-source download manager for Windows, with a companion bro
 
 - Fast multi-connection downloads that split dynamically and resume safely after a crash or restart
 - Speed limits, queues, a scheduler and categories
-- Browser integration: downloads are handed to OmniDm, and stay in the browser if OmniDm can't take them
+- Browser integration: downloads are handed to OmniDM, and stay in the browser if OmniDM can't take them
 - HLS and DASH video downloads (no DRM circumvention)
 - Proxy, PAC and authentication support
 
@@ -45,4 +45,4 @@ npm run build:firefox    # Firefox
 
 ## Licence
 
-OmniDm is free software, licensed under the [GNU General Public License v3.0 or later](LICENSE).
+OmniDM is free software, licensed under the [GNU General Public License v3.0 or later](LICENSE).

@@ -33,7 +33,7 @@ pub fn read_manifest(text: &str, url: &Url) -> Result<Manifest, MediaError> {
         [period] => *period,
         _ => {
             return Err(MediaError::Unsupported(
-                "The video is made of several parts (DASH periods), which OmniDm can't download yet"
+                "The video is made of several parts (DASH periods), which OmniDM can't download yet"
                     .into(),
             ));
         }

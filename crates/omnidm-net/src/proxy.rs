@@ -380,7 +380,7 @@ mod win {
 
     impl PacSession {
         pub(super) fn open() -> Option<Self> {
-            let agent = wide("OmniDm");
+            let agent = wide("OmniDM");
             // SAFETY: `agent` is NUL-terminated and outlives the call; null proxy strings
             // are allowed with WINHTTP_ACCESS_TYPE_NO_PROXY.
             let handle = unsafe {

@@ -160,9 +160,9 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
       <div className="glow-done flex h-screen flex-col px-4 pt-3 pb-4 font-sans text-[#f4f6fb] select-none">
         {titleBar && <SmallTitleBar status="Done" onClose={closeNow} />}
         <div className="mt-4 flex flex-col items-center">
-          <div className="relative h-[77px] w-[70px] self-center">
-            <FileIcon name={iconName} className="h-[71px] w-[60px]" />
-            <span className="absolute top-[51px] left-[44px] flex size-[26px] items-center justify-center rounded-full border-[3px] border-[#0b0e1a] bg-[#12b886] shadow-[0_0_14px_rgb(18_184_134/0.6)]">
+          <div className="relative self-center">
+            <FileIcon name={iconName} className="size-[60px]" />
+            <span className="absolute -right-2 -bottom-2 flex size-[26px] items-center justify-center rounded-full border-[3px] border-[#0b0e1a] bg-[#12b886] shadow-[0_0_14px_rgb(18_184_134/0.6)]">
               <Icon name="check" strokeWidth={3} className="size-3.5 text-white" />
             </span>
           </div>
@@ -240,7 +240,7 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
 
       <div className="mt-5 flex flex-col gap-5 px-1">
         <div className="flex items-center gap-3.5">
-          <FileIcon name={iconName} className="h-[52px] w-11" />
+          <FileIcon name={iconName} className="size-11" />
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <h1 className="truncate text-[15px] font-semibold" title={name}>
               {name}
@@ -250,7 +250,7 @@ export function DownloadProgress({ id, name, size, folder, downloadsFolder, icon
               <span className={`font-medium ${shown.text}`}>{shown.label}</span>
             </p>
           </div>
-          <p className="flex items-start gap-0.5 self-start tabular-nums" aria-label={`${percent} percent`}>
+          <p className="flex items-start gap-0.5 self-start font-mono tabular-nums" aria-label={`${percent} percent`}>
             <span className="text-[40px] leading-none font-light tracking-[-0.03em] text-white">{percent}</span>
             <span className="text-lg text-[#8b93a9]">%</span>
           </p>
@@ -361,7 +361,7 @@ function Stat({ label, children, divider }: { label: string; children: ReactNode
       {divider && <span className="h-9 w-px shrink-0 bg-white/[0.08]" />}
       <div className="flex min-w-0 flex-col gap-1 pl-4">
         <dt className="text-xs text-[#8b93a9]">{label}</dt>
-        <dd className="flex items-baseline text-[17px] font-semibold whitespace-nowrap">{children}</dd>
+        <dd className="flex items-baseline font-mono text-[17px] font-semibold whitespace-nowrap">{children}</dd>
       </div>
     </div>
   );

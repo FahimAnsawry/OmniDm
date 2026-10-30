@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// The safe handoff of a browser download to OmniDm (plan §9.3): pause it, offer it to the
+// The safe handoff of a browser download to OmniDM (plan §9.3): pause it, offer it to the
 // app with its headers and cookies, then remove the browser's copy only if the app took
 // it. On a refusal, a timeout or any error the browser simply resumes its own download.
 
@@ -46,7 +46,7 @@ export interface CaptureDeps {
 /** What happened to the download. */
 export type CaptureOutcome = 'captured' | 'resumed' | 'left';
 
-/** How long the browser's download stays paused while OmniDm decides. */
+/** How long the browser's download stays paused while OmniDM decides. */
 const RESULT_TIMEOUT_MS = 10_000;
 
 export async function handleCreated(
@@ -92,7 +92,7 @@ export async function handleCreated(
     await deps.downloads.resume(item.id).catch(() => undefined);
     return 'resumed';
   }
-  // OmniDm has it: cancel first, finish filename determination while the ID still exists,
+  // OmniDM has it: cancel first, finish filename determination while the ID still exists,
   // then erase the browser's entry.
   await deps.downloads.cancel(item.id).catch(() => undefined);
   onSettled?.();

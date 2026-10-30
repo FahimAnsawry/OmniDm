@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// The "Install OmniDm" notice (plan §9.3): a badge on the toolbar icon while the app
+// The "Install OmniDM" notice (plan §9.3): a badge on the toolbar icon while the app
 // can't be found or when the extension is disabled, and a setup page once, right after the
 // extension is installed.
 
@@ -17,12 +17,12 @@ export interface Badge {
   title: string;
 }
 
-const NORMAL: Badge = { text: '', color: '#0284c7', title: 'OmniDm (click to disable)' };
+const NORMAL: Badge = { text: '', color: '#0284c7', title: 'OmniDM (click to disable)' };
 
 const DISABLED: Badge = {
   text: 'OFF',
   color: '#6b7280',
-  title: 'OmniDm is disabled (click to enable)',
+  title: 'OmniDM is disabled (click to enable)',
 };
 
 /** The toolbar icon's badge for a connection state and enabled toggle. */
@@ -33,13 +33,13 @@ export function badgeFor(status: LinkStatus, enabled = true): Badge {
       return {
         text: '!',
         color: '#dc2626',
-        title: "OmniDm isn't installed, so downloads stay in the browser.",
+        title: "OmniDM isn't installed, so downloads stay in the browser.",
       };
     case 'notRunning':
       return {
         text: '!',
         color: '#d97706',
-        title: "OmniDm didn't start, so downloads stay in the browser.",
+        title: "OmniDM didn't start, so downloads stay in the browser.",
       };
     default:
       return NORMAL;

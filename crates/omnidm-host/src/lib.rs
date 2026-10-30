@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Native messaging host: the browser starts it, and it relays the extension's messages
-//! to the OmniDm app over the named pipe (plan §10). It starts the app when needed and
+//! to the OmniDM app over the named pipe (plan §10). It starts the app when needed and
 //! registers itself with the browsers.
 
 use std::io;
@@ -88,7 +88,7 @@ fn into_io(e: FrameError) -> io::Error {
     }
 }
 
-/// The OmniDm apps next to the host, newest first (shared with the CLI).
+/// The OmniDM apps next to the host, newest first (shared with the CLI).
 pub use omnidm_ipc::app_paths;
 
 /// Connects to the app, starting it with `start` if it isn't running, and waits up to
@@ -124,7 +124,7 @@ pub fn chromium_manifest(host_exe: &Path) -> String {
         .collect();
     let manifest = serde_json::json!({
         "name": HOST_NAME,
-        "description": "OmniDm native messaging host",
+        "description": "OmniDM native messaging host",
         "path": host_exe,
         "type": "stdio",
         "allowed_origins": origins,
@@ -136,7 +136,7 @@ pub fn chromium_manifest(host_exe: &Path) -> String {
 pub fn firefox_manifest(host_exe: &Path) -> String {
     let manifest = serde_json::json!({
         "name": HOST_NAME,
-        "description": "OmniDm native messaging host",
+        "description": "OmniDM native messaging host",
         "path": host_exe,
         "type": "stdio",
         "allowed_extensions": [FIREFOX_EXTENSION_ID],

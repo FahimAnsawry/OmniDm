@@ -87,7 +87,7 @@ pub enum Message {
     Ack,
     List,
     Downloads(DownloadList),
-    /// Asks the app to open its window (sent when OmniDm is started a second time).
+    /// Asks the app to open its window (sent when OmniDM is started a second time).
     Show,
 
     // --- queues (CLI ↔ app); each is answered with `ack`, `queues` or `error` ---
@@ -239,7 +239,7 @@ impl Capture {
 )]
 #[ts(export)]
 pub enum CaptureResult {
-    /// OmniDm took the download: the browser should cancel its copy.
+    /// OmniDM took the download: the browser should cancel its copy.
     Accepted {
         #[ts(type = "number")]
         download_id: i64,
@@ -259,9 +259,9 @@ pub enum CaptureResult {
 pub enum RejectReason {
     /// The capture itself was unusable (bad URL, bad body…).
     Invalid,
-    /// OmniDm couldn't fetch the file itself, so only the browser can.
+    /// OmniDM couldn't fetch the file itself, so only the browser can.
     ProbeFailed,
-    /// OmniDm isn't taking downloads right now.
+    /// OmniDM isn't taking downloads right now.
     NotAccepting,
 }
 
@@ -438,7 +438,7 @@ pub struct DownloadDetails {
     #[ts(type = "number")]
     pub speed: Option<u64>,
     pub connections: u32,
-    /// What happened since OmniDm started, oldest first.
+    /// What happened since OmniDM started, oldest first.
     pub log: Vec<LogLine>,
 }
 

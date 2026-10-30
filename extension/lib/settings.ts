@@ -3,7 +3,7 @@
 // Capture settings, kept in the extension's local storage.
 
 export interface CaptureSettings {
-  /** Send downloads to OmniDm at all. */
+  /** Send downloads to OmniDM at all. */
   enabled: boolean;
   /** Smaller downloads (when their size is known) stay in the browser. 0 = no minimum. */
   minSize: number;
@@ -13,7 +13,7 @@ export interface CaptureSettings {
   excludedSites: string[];
   /** Capture downloads from private windows too. */
   capturePrivate: boolean;
-  /** Put a Download button on videos OmniDm found on a page. */
+  /** Put a Download button on videos OmniDM found on a page. */
   videoButton: boolean;
 }
 

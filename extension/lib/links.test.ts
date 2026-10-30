@@ -22,7 +22,7 @@ describe('httpLinks', () => {
 });
 
 describe('toBrowserCookie', () => {
-  it('keeps the fields OmniDm needs and drops the rest', () => {
+  it('keeps the fields OmniDM needs and drops the rest', () => {
     const fromBrowser = {
         name: 'session',
         value: 'abc',

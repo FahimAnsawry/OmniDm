@@ -21,7 +21,7 @@ pub enum PostAction {
     Sleep,
     Hibernate,
     Shutdown,
-    /// Quit OmniDm.
+    /// Quit OmniDM.
     Quit,
 }
 

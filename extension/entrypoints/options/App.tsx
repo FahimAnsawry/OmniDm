@@ -50,10 +50,10 @@ function App() {
   return (
     <main className="min-h-screen bg-neutral-100 font-sans text-sm text-neutral-900 dark:bg-neutral-900 dark:text-neutral-100">
       <form onSubmit={save} className="mx-auto max-w-xl space-y-6 px-6 py-8">
-        <h1 className="text-xl font-semibold">OmniDm settings</h1>
+        <h1 className="text-xl font-semibold">OmniDM settings</h1>
 
         <label className="flex items-center justify-between gap-3">
-          <span>Send downloads to OmniDm</span>
+          <span>Send downloads to OmniDM</span>
           <input
             type="checkbox"
             className="size-4 accent-sky-600"
@@ -86,7 +86,7 @@ function App() {
             onChange={(e) => setFileTypes(e.target.value)}
           />
           <span className="mt-1 block text-neutral-500">
-            Only these types go to OmniDm. Leave empty for every type.
+            Only these types go to OmniDM. Leave empty for every type.
           </span>
         </label>
 
@@ -113,7 +113,7 @@ function App() {
         </label>
 
         <label className="flex items-center justify-between gap-3">
-          <span>Show a Download button on videos OmniDm finds</span>
+          <span>Show a Download button on videos OmniDM finds</span>
           <input
             type="checkbox"
             className="size-4 accent-sky-600"

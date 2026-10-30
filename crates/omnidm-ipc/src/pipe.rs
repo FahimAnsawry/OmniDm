@@ -51,10 +51,10 @@ pub enum PipeError {
 impl fmt::Display for PipeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NotRunning => write!(f, "OmniDm is not running"),
-            Self::AlreadyRunning => write!(f, "OmniDm is already running"),
+            Self::NotRunning => write!(f, "OmniDM is not running"),
+            Self::AlreadyRunning => write!(f, "OmniDM is already running"),
             Self::Impostor { found } => {
-                write!(f, "the pipe is served by {}, not OmniDm", found.display())
+                write!(f, "the pipe is served by {}, not OmniDM", found.display())
             }
             Self::Io(e) => write!(f, "{e}"),
         }

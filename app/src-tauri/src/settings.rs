@@ -30,7 +30,7 @@ pub struct AppSettings {
     start_with_windows: bool,
 }
 
-/// Applies the saved settings when OmniDm starts.
+/// Applies the saved settings when OmniDM starts.
 pub fn apply_saved(app: &AppHandle) {
     let manager = app.state::<Manager>();
     if let Some(folder) = manager.setting(DOWNLOADS_SETTING) {

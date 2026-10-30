@@ -17,10 +17,10 @@ export default defineConfig({
     plugins: [tailwindcss()],
   }),
   manifest: ({ browser }) => ({
-    name: 'OmniDm',
-    description: 'Send downloads from your browser to the OmniDm download manager.',
+    name: 'OmniDM',
+    description: 'Send downloads from your browser to the OmniDM download manager.',
     action: {
-      default_title: 'OmniDm (click to disable)',
+      default_title: 'OmniDM (click to disable)',
     },
     permissions: [
       'downloads',
@@ -40,7 +40,7 @@ export default defineConfig({
             gecko: {
               id: 'omnidm@fahimansawry.github.io',
               strict_min_version: '128.0',
-              // Nothing leaves the computer: data only goes to the local OmniDm app.
+              // Nothing leaves the computer: data only goes to the local OmniDM app.
               data_collection_permissions: { required: ['none'] },
             },
           },

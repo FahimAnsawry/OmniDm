@@ -13,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "OmniDm",
+        "title": "OmniDM",
         "width": 1100,
         "height": 700,
         "minWidth": 900,

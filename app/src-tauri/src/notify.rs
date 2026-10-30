@@ -48,6 +48,6 @@ pub fn finished(app: &AppHandle, manager: &Manager, done: &Finished) {
         None => name,
     };
     if let Err(e) = app.notification().builder().title(title).body(body).show() {
-        eprintln!("OmniDm: can't show a notification: {e}");
+        eprintln!("OmniDM: can't show a notification: {e}");
     }
 }

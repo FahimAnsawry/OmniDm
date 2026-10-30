@@ -178,7 +178,7 @@ fn track(media: MediaPlaylist, url: &Url) -> Result<Track, MediaError> {
                 Some(known) if known.url == piece.url && known.range == piece.range => {}
                 Some(_) => {
                     return Err(MediaError::Unsupported(
-                        "The video changes format partway through, which OmniDm can't download yet"
+                        "The video changes format partway through, which OmniDM can't download yet"
                             .into(),
                     ));
                 }

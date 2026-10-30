@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Which browser downloads OmniDm offers to take over (plan §9.3).
+// Which browser downloads OmniDM offers to take over (plan §9.3).
 
 import type { CaptureSettings } from './settings';
 

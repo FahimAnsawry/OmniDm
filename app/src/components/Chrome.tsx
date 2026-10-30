@@ -3,7 +3,7 @@
 // Pieces of the dark window look shared by the main window and a download's window:
 // the logo, the window buttons of a title bar drawn by the app, file icons and chips.
 
-import { type ReactNode, useId } from "react";
+import type { ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import logo from "../assets/logo.svg";
 import { fileKind } from "../lib/fileKind";
@@ -47,13 +47,13 @@ export function WindowButtons({
   );
 }
 
-/** A download window's title bar: the logo, "OmniDm · <status>", and its buttons. */
+/** A download window's title bar: the logo, "OmniDM · <status>", and its buttons. */
 export function SmallTitleBar({ status, onClose }: { status?: string; onClose?: () => void }) {
   return (
     <div data-tauri-drag-region className="-my-1.5 -mr-1.5 flex items-center gap-2 select-none">
       <Logo />
-      <span data-tauri-drag-region className="text-xs font-semibold text-[#9aa3b8]">
-        OmniDm
+      <span data-tauri-drag-region className="font-logo text-xs font-semibold text-[#9aa3b8]">
+        OmniDM
       </span>
       {status && (
         <span data-tauri-drag-region className="truncate text-xs text-[#6b7390]">
@@ -66,77 +66,26 @@ export function SmallTitleBar({ status, onClose }: { status?: string; onClose?: 
   );
 }
 
-/** A document with its extension on a coloured tag. `flat`: the small one in the list. */
+/**
+ * The file type's line icon. `flat`: bare and in its colour, for the main window's list and
+ * Add download; otherwise plain, centered in a tile, for the download windows.
+ */
 export function FileIcon({ name, className, flat = false }: { name: string; className: string; flat?: boolean }) {
-  const kind = fileKind(name);
-  const rawId = useId();
-  const id = rawId.replace(/[^a-zA-Z0-9_-]/g, "");
-  const small = kind.tag.length > 3;
+  const { icon, color } = fileKind(name);
+  if (flat) {
+    return (
+      <span aria-hidden="true" style={{ color }} className={`flex shrink-0 ${className}`}>
+        <Icon name={icon} strokeWidth={1.75} className="size-full" />
+      </span>
+    );
+  }
   return (
-    <svg viewBox="0 0 64 76" aria-hidden="true" className={`shrink-0 ${className}`}>
-      <defs>
-        <linearGradient id={`${id}d`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#2a3150" />
-          <stop offset="1" stopColor="#161b2e" />
-        </linearGradient>
-        <linearGradient id={`${id}g`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor={kind.colors[0]} />
-          <stop offset="1" stopColor={kind.colors[1]} />
-        </linearGradient>
-      </defs>
-      {flat ? (
-        <>
-          <path
-            d="M10 1h30l23 23v42a9 9 0 0 1-9 9H10a9 9 0 0 1-9-9V10a9 9 0 0 1 9-9z"
-            fill="#232a44"
-            stroke="#ffffff38"
-            strokeWidth="2"
-          />
-          <path d="M40 1v13a10 10 0 0 0 10 10h13" fill="#ffffff1f" stroke="#ffffff38" strokeWidth="2" />
-          {/* Drawn at ~26px wide, so the tag takes the full width and big letters, without an outline. */}
-          <rect x="0" y="37" width="64" height="32" rx="6" fill={`url(#${id}g)`} />
-          <text
-            x="32"
-            y={small ? 59 : 61}
-            fontSize={small ? 17 : 22}
-            fontWeight="800"
-            fill="#ffffff"
-            textAnchor="middle"
-            fontFamily="Inter Variable, Segoe UI, sans-serif"
-          >
-            {kind.tag}
-          </text>
-        </>
-      ) : (
-        <>
-          <path
-            d="M10 .5h30l23.5 23.5V66a9.5 9.5 0 0 1-9.5 9.5H10A9.5 9.5 0 0 1 .5 66V10A9.5 9.5 0 0 1 10 .5z"
-            fill={`url(#${id}d)`}
-            stroke="#ffffff2e"
-          />
-          <path d="M40 .5V14a10 10 0 0 0 10 10h13.5" fill="#ffffff14" stroke="#ffffff2e" />
-          <rect x="6" y="42" width="44" height="22" rx="6" fill={`url(#${id}g)`} stroke="#ffffff26" strokeWidth="1" />
-          <text
-            x="28"
-            y="57"
-            fontSize={small ? 11.5 : 13.5}
-            fontWeight="800"
-            fill="#ffffff"
-            textAnchor="middle"
-            letterSpacing="0.03em"
-            fontFamily="Inter Variable, Segoe UI, sans-serif"
-            style={{
-              paintOrder: "stroke",
-              stroke: "rgb(0 0 0 / 0.35)",
-              strokeWidth: "1.5px",
-              strokeLinejoin: "round",
-            }}
-          >
-            {kind.tag}
-          </text>
-        </>
-      )}
-    </svg>
+    <span
+      aria-hidden="true"
+      className={`flex shrink-0 items-center justify-center rounded-[14px] border border-white/[0.1] bg-white/[0.05] text-[#c9cfdd] ${className}`}
+    >
+      <Icon name={icon} strokeWidth={1.5} className="size-[46%]" />
+    </span>
   );
 }
 

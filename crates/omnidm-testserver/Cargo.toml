@@ -1,6 +1,6 @@
 [package]
 name = "omnidm-testserver"
-description = "HTTP test server with fault injection, used by OmniDm integration tests."
+description = "HTTP test server with fault injection, used by OmniDM integration tests."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

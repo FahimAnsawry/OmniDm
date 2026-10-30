@@ -1,14 +1,14 @@
-# OmniDm: Build Plan
+# OmniDM: Build Plan
 
-> OmniDm is an original, open download manager for Windows, with a companion browser extension.
+> OmniDM is an original, open download manager for Windows, with a companion browser extension.
 > This plan is the working spec. The design rationale comes from §10 of `docs/idm-analysis.md`.
 > Implementation follows this plan and §10 only, not the descriptive sections of that analysis.
 
 | Item | Decision |
 |---|---|
-| Product name | OmniDm (binaries and crates: `omnidm-*`) |
+| Product name | OmniDM (binaries and crates: `omnidm-*`) |
 | Stack | **Rust** engine + **Tauri 2** desktop app (React + TypeScript + Tailwind CSS UI) + **TypeScript** extension built with **WXT** (React + Tailwind CSS) |
-| Licence | **GPL-3.0-or-later**. OmniDm and every derived version stay free and open |
+| Licence | **GPL-3.0-or-later**. OmniDM and every derived version stay free and open |
 | Repository owner | GitHub [`FahimAnsawry`](https://github.com/FahimAnsawry) |
 | First platform | Windows 10/11, x64 and arm64. The core stays cross-platform so macOS/Linux can follow |
 | Browsers | Chrome, Edge, Brave, Opera, Vivaldi (one Chromium build) and Firefox |
@@ -51,14 +51,14 @@
 
 ## 2. Ground rules
 
-1. **Originality.** Don't copy IDM's code, protocol, data formats, wording, icons, layout or identifiers. OmniDm's protocol, schema and UI are designed from scratch.
-2. **Never lose a download.** If OmniDm can't take over a browser download, the browser keeps it.
+1. **Originality.** Don't copy IDM's code, protocol, data formats, wording, icons, layout or identifiers. OmniDM's protocol, schema and UI are designed from scratch.
+2. **Never lose a download.** If OmniDM can't take over a browser download, the browser keeps it.
 3. **Untrusted input.** Everything from the extension, the pipe, the CLI or a server is untrusted:
    - Accept only `http`, `https` (and later `ftp`) URLs.
    - Keep save paths inside allowed roots.
    - Sanitise file names.
    - Never run downloaded files automatically.
-4. **No elevation.** OmniDm runs as the normal user. It installs per user and writes only to user-writable locations.
+4. **No elevation.** OmniDM runs as the normal user. It installs per user and writes only to user-writable locations.
 5. **Crash safety.** A crash or power loss at any moment must leave a resumable download, never a corrupt "complete" file.
 6. **Tests first** for the engine. Every resume, error and split rule gets an automated test against `testserver/` before it's considered done.
 
@@ -86,7 +86,7 @@ All identifiers derive from the GitHub account `FahimAnsawry`, written in lowerc
 ### 4.1 Processes
 
 ```
- Browser + OmniDm extension (WXT, MV3)
+ Browser + OmniDM extension (WXT, MV3)
      │  native messaging: 4-byte length + JSON (stdio)
      ▼
  omnidm-host.exe            (tiny relay; starts the app if it isn't running)
@@ -106,7 +106,7 @@ All identifiers derive from the GitHub account `FahimAnsawry`, written in lowerc
 ### 4.2 Repository layout
 
 ```
-OmniDm/
+OmniDM/
   Cargo.toml                 workspace
   crates/
     omnidm-core/             engine: Download, Segment, Scheduler (split/ramp/stall), ResumeValidator
@@ -141,7 +141,7 @@ OmniDm/
 | Windows APIs | `windows` crate | Pipe ACLs, power requests, wake timers, Zone.Identifier |
 | Logging | `tracing` + `tracing-appender` | Rolling logs in `%APPDATA%\OmniDm\logs` |
 | HLS | `m3u8-rs` | |
-| DASH | `dash-mpd` (parser only) | Downloads go through OmniDm's own engine |
+| DASH | `dash-mpd` (parser only) | Downloads go through OmniDM's own engine |
 | AES | `aes` + `cbc` | HLS AES-128 only |
 | File types | `mime_guess`, `infer` | Extension from MIME; sniff HTML error pages |
 | Tests | `proptest`, `axum` (test server), Playwright, `web-ext` | |
@@ -256,7 +256,7 @@ A segment is *stalled* when its speed stays below 25 % of the median segment spe
 
 ### 5.7 Speed limiting
 
-**Dropped (decided 2026-10-28):** not needed. OmniDm has no speed limit, so the token bucket, `--limit` and the limit settings in the UI are not built. `EngineConfig.speed_limit` stays as an unused hook (always `None`) in case it comes back later.
+**Dropped (decided 2026-10-28):** not needed. OmniDM has no speed limit, so the token bucket, `--limit` and the limit settings in the UI are not built. `EngineConfig.speed_limit` stays as an unused hook (always `None`) in case it comes back later.
 
 ### 5.8 File naming
 
@@ -311,7 +311,7 @@ settings    (key PRIMARY KEY, value_json)
 history     (download_id, event, at, detail)   -- optional, for the details pane
 ```
 
-- **Cookies:** encrypted with DPAPI (current user) in a `secrets` table, deleted when the download completes. On resume, OmniDm first asks the extension for fresh cookies when one is connected.
+- **Cookies:** encrypted with DPAPI (current user) in a `secrets` table, deleted when the download completes. On resume, OmniDM first asks the extension for fresh cookies when one is connected.
 - **Private-window downloads:** no cookies persisted, removed from history on completion (setting).
 - **Import/export:** a documented JSON format (all fields) and plain URL lists (`.txt`, one per line).
 
@@ -322,7 +322,7 @@ history     (download_id, event, at, detail)   -- optional, for the details pane
 ### 8.1 Transport
 
 - Named pipe `\\.\pipe\OmniDm.<SessionId>`, created with `FILE_FLAG_FIRST_PIPE_INSTANCE` and a DACL that allows only the current user's SID.
-- Clients verify the server with `GetNamedPipeServerProcessId`: its image path must be OmniDm's install path.
+- Clients verify the server with `GetNamedPipeServerProcessId`: its image path must be OmniDM's install path.
 - Framing matches native messaging: **4-byte little-endian length + UTF-8 JSON**. The host relays bytes without re-encoding.
 - The pipe doubles as the single-instance lock. Launching `OmniDm.exe <url>` again forwards to the running instance.
 
@@ -376,7 +376,7 @@ downloads.onCreated(item)
        send `capture` → wait for `captureResult` (timeout 10 s)
          ├─ accepted → downloads.cancel(item.id) + downloads.erase({id})
          └─ rejected / timeout / host missing → downloads.resume(item.id)
-                                                 (+ "Install OmniDm" notice if the host is missing)
+                                                 (+ "Install OmniDM" notice if the host is missing)
 ```
 
 The app sends `accepted` only after its probe succeeds, so a link that works only inside the browser stays in the browser.
@@ -391,7 +391,7 @@ The app sends `accepted` only after its probe succeeds, so a link that works onl
 
 | Feature | Details |
 |---|---|
-| Context menu | "Download with OmniDm" (links, media), "Download all links", "Download selected links" (the last two inject a one-off link collector with `scripting.executeScript` when the user clicks the menu item) |
+| Context menu | "Download with OmniDM" (links, media), "Download all links", "Download selected links" (the last two inject a one-off link collector with `scripting.executeScript` when the user clicks the menu item) |
 | Media detection | `webRequest.onHeadersReceived` for `application/vnd.apple.mpegurl`, `application/x-mpegURL`, `application/dash+xml`, `video/*`, `audio/*`, plus `.m3u8`/`.mpd` URLs. Per-tab list, badge count. Never on DRM-protected streams (an `EXT-X-KEY` method other than `AES-128`, or a DASH `ContentProtection` element), which are shown as "protected, can't download" |
 | Popup | Connection state (connected / app not running / not installed), detected media for the tab, capture on/off, "never capture on this site" |
 | Options | Capture file types, minimum size, excluded sites, private-window capture, synced with the app through `settingsChanged` |
@@ -409,7 +409,7 @@ The app sends `accepted` only after its probe succeeds, so a link that works onl
 
 - A tiny Rust exe with no async runtime. It relays stdin ⇄ pipe in two threads and exits when either side closes.
 - **App not running:** start `OmniDm.exe --background` from its own directory, then retry connecting to the pipe for up to 10 s.
-- Checks that the pipe server is OmniDm (§8.1). Never interprets messages, except to cap their size.
+- Checks that the pipe server is OmniDM (§8.1). Never interprets messages, except to cap their size.
 - **Registration** (done by the installer, removed by the uninstaller, both under HKCU):
   - Chrome: `Software\Google\Chrome\NativeMessagingHosts\<host-name>`
   - Edge: `Software\Microsoft\Edge\NativeMessagingHosts\<host-name>`
@@ -489,8 +489,8 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 - [x] `git init`, workspace skeleton (§4.2), CI, `README`, `LICENSE` (GPL-3.0 full text), `CONTRIBUTING`. Every source file starts with `SPDX-License-Identifier: GPL-3.0-or-later`.
 - [x] Tailwind CSS v4 in the app and the extension.
 - [x] Identifiers decided (§3).
-- [ ] Check that the name "OmniDm" is free: GitHub, Chrome Web Store, Edge Add-ons, AMO, a trademark search.
-- [x] Rename "FreeDM" to "OmniDm" in `docs/`.
+- [ ] Check that the name "OmniDM" is free: GitHub, Chrome Web Store, Edge Add-ons, AMO, a trademark search.
+- [x] Rename "FreeDM" to "OmniDM" in `docs/`.
 - [ ] Rename the folder `F:\FreeDM` → `F:\OmniDm` (needs Claude Code closed).
 - [ ] Create `github.com/FahimAnsawry/OmniDm`, push, and see CI pass.
 - **Done when:** `cargo test` and the extension build both pass in CI on an empty skeleton. Locally verified 2026-10-28: fmt, clippy, tests, app UI build, both extension builds.
@@ -534,16 +534,16 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 - **Done when:** the integration suite covers every row in §6 except Auth and passes. Downloading through a fixed proxy and through a PAC script works.
 
 ### M3: IPC, host, extension ✅ (2026-10-28)
-- [x] Protocol types. The Rust types in `omnidm-ipc::protocol` are the source; ts-rs writes the TypeScript copies to `protocol/ts/` when the tests run, and CI fails if they are stale. This replaced the planned JSON Schema plus generator. Pipe server with the ACL and peer checks. The peer check accepts any OmniDm app found next to the host or CLI (`app_paths`), newest first, so an old build left in the folder doesn't lock out the new one.
+- [x] Protocol types. The Rust types in `omnidm-ipc::protocol` are the source; ts-rs writes the TypeScript copies to `protocol/ts/` when the tests run, and CI fails if they are stale. This replaced the planned JSON Schema plus generator. Pipe server with the ACL and peer checks. The peer check accepts any OmniDM app found next to the host or CLI (`app_paths`), newest first, so an old build left in the folder doesn't lock out the new one.
 - [x] `omnidm-host` and registration: `omnidm-host --register` / `--unregister` for now, the installer in M7. The host uses a small tokio runtime, not plain blocking I/O, because one blocking pipe handle can't read and write at the same time.
 - [x] Download service (`omnidm-service`): captures are probed before being accepted, a waiting line (3 at a time), pause/resume. Cookies are saved encrypted with DPAPI until the download completes, and on resume the extension is asked for fresh ones first (decided 2026-10-28).
 - [x] App: tray icon (Open/Quit), closing the window hides it, `--background` starts hidden, a second start shows the running one. A minimal live download list; the full UI is M5. A plain `cargo build` of the app needs `--features custom-protocol` to show the built UI instead of the dev server.
-- [x] WXT extension: capture flow (§9.3), header cache, context menus, popup, options. Chrome/Edge 120+, Firefox 128+ (decided 2026-10-28). Not yet: partitioned (CHIPS) cookies, and the "Install OmniDm" notice when the host is missing (M5, with the capture prompt and notifications).
+- [x] WXT extension: capture flow (§9.3), header cache, context menus, popup, options. Chrome/Edge 120+, Firefox 128+ (decided 2026-10-28). Not yet: partitioned (CHIPS) cookies, and the "Install OmniDM" notice when the host is missing (M5, with the capture prompt and notifications).
 - [x] CLI talks to the running app over the pipe; `--standalone` (or `OMNIDM_DATA_DIR`) keeps the old in-process mode.
-- **Result (Chrome, by hand):** plain, cookie-protected, referrer-protected and form (POST) downloads all landed in OmniDm complete. The works-once link was refused by OmniDm's probe and finished in the browser. With the host unregistered, the browser downloaded normally.
+- **Result (Chrome, by hand):** plain, cookie-protected, referrer-protected and form (POST) downloads all landed in OmniDM complete. The works-once link was refused by OmniDM's probe and finished in the browser. With the host unregistered, the browser downloaded normally.
 - Not tested live: Edge (skipped, decided 2026-10-28; it uses the same Chromium code path and registry setup as Chrome) and Firefox (built and linted only; not installed on the dev machine).
-- Found while testing: IDM's "advanced browser integration" grabs downloads before any extension sees them. It has to be turned off in IDM to test OmniDm on a PC that has both.
-- **Done when:** clicking a download in Chrome, Edge and Firefox lands in OmniDm with cookies and referrer. An expiring link falls back to the browser. Uninstalling the host makes the browser download normally.
+- Found while testing: IDM's "advanced browser integration" grabs downloads before any extension sees them. It has to be turned off in IDM to test OmniDM on a PC that has both.
+- **Done when:** clicking a download in Chrome, Edge and Firefox lands in OmniDM with cookies and referrer. An expiring link falls back to the browser. Uninstalling the host makes the browser download normally.
 
 ### M4: Queues, scheduler, categories ✅ (2026-10-29)
 - [x] Queues with concurrency and order. Scheduler with days/times and wake timers.
@@ -559,32 +559,32 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
   - Downloads outside queues keep the old rules (captures start at once; others share `max_active`). Queue downloads don't count against `max_active`.
   - CLI: `omnidm queue list|create|edit|delete|start|stop|add|remove|move`, and `omnidm get --queue <name>`. Queue names are unique ignoring case.
 - Step 3 (2026-10-29): scheduler and power.
-  - `omnidm-service::scheduler` looks at the clock at least every 10 s, and at once when a schedule changes. A start or stop that came due since its last look is acted on even late (a PC that slept through 02:00 without a wake timer starts the queue on waking); when both came due, the later wins. Times from before OmniDm started aren't caught up on.
+  - `omnidm-service::scheduler` looks at the clock at least every 10 s, and at once when a schedule changes. A start or stop that came due since its last look is acted on even late (a PC that slept through 02:00 without a wake timer starts the queue on waking); when both came due, the later wins. Times from before OmniDM started aren't caught up on.
   - Waking: per queue (`--wake`, off by default), a waitable timer set 60 s before the start. Windows only honours it when "Allow wake timers" is on in the power plan.
-  - Keep-awake: a "system required" power request while any download runs, so a timer-woken PC doesn't fall back asleep after about 2 minutes. It shows in `powercfg /requests` as "OmniDm is downloading".
+  - Keep-awake: a "system required" power request while any download runs, so a timer-woken PC doesn't fall back asleep after about 2 minutes. It shows in `powercfg /requests` as "OmniDM is downloading".
   - CLI: `omnidm queue schedule <name> [--at HH:MM [--days …] | --once "YYYY-MM-DD HH:MM"] [--stop HH:MM] [--wake]`; with no options the queue only starts by hand.
   - Found while testing: a download stopped and only then left the "running" list, so a Resume sent the moment it reported "paused" was ignored. It now leaves the list first (a bug since M3).
 - Step 4 (2026-10-29): after-queue actions (`omnidm-service::after_queue`).
   - Only a queue that finishes by itself after trying at least one download triggers its action; an empty or stopped queue never does. One action counts down at a time.
   - If other downloads are still running, it waits for them; if one starts during the countdown, the action is called off.
   - 60 s countdown, reported every second. The app brings its window forward once with a banner and a Cancel button; `omnidm queue cancel-action` cancels from the CLI.
-  - Sleep and hibernate use `SetSuspendState` with wake events left on (so a later wake timer still works); shutdown uses `ExitWindowsEx` (apps may save; only hung ones are forced). Both first turn on the shutdown privilege. Quit closes OmniDm.
+  - Sleep and hibernate use `SetSuspendState` with wake events left on (so a later wake timer still works); shutdown uses `ExitWindowsEx` (apps may save; only hung ones are forced). Both first turn on the shutdown privilege. Quit closes OmniDM.
 - Step 5 (2026-10-29): categories applied.
   - A browser download is saved in its category's folder (made when first needed); with no folder, or one that can't be made, in the downloads folder. The category is decided after the probe, from the file name, the server's `Content-Type` and the site; for "download all links", from the link's name.
   - CLI downloads keep their `-d` folder; their category is only recorded.
   - CLI: `omnidm category list` and `omnidm category folder <name> [<folder>]`. `omnidm list` shows each download's category. Adding and editing categories is M5 (Settings → Categories).
 - **Done when:** a scheduled queue starts from sleep at the set time, runs 3 at a time, and puts the PC to sleep afterwards.
   - **Not run live** (decided 2026-10-29: the live sleep/wake test was skipped). Covered by the automated tests instead: scheduled starts and stops on chosen clock times and on the real clock, at most N downloads at once, the after-queue countdown and each action with a stand-in for Windows, and Windows accepting the wake timer, the keep-awake request and the shutdown privilege. Waking from sleep and the real sleep have not been seen working.
-  - Found while checking: the dev PC's power plan has "Allow wake timers" at "Important wake timers only" (plugged in) and off (battery). Windows then ignores OmniDm's wake timer, so `--wake` silently does nothing. M5 should warn about this where a schedule with waking is set.
+  - Found while checking: the dev PC's power plan has "Allow wake timers" at "Important wake timers only" (plugged in) and off (battery). Windows then ignores OmniDM's wake timer, so `--wake` silently does nothing. M5 should warn about this where a schedule with waking is set.
 
 ### M5: Desktop UI
 - [ ] Screens from §11.1, tray, notifications, autostart, clipboard monitor.
-- [x] Capture prompt when a download is taken from the browser (with a setting to stay silent), and the extension's "Install OmniDm" notice when the host is missing (§9.3).
+- [x] Capture prompt when a download is taken from the browser (with a setting to stay silent), and the extension's "Install OmniDM" notice when the host is missing (§9.3).
 - [ ] From M4: queue and schedule screens, category editing (add, remove, reorder, rules), and a warning when "wake the PC" is chosen but Windows' "Allow wake timers" is off. The live sleep/wake test skipped in M4 runs here.
 - [ ] Settings wired to the store and live-applied.
 - [ ] ~~Site login: Basic and Digest auth, a username/password dialog on `401`, saved per site in Windows Credential Manager. The test server gets auth switches.~~ Dropped by the user (2026-10-29), together with "ignore certificate errors": a `401` still fails with "this site needs a username and password", and a bad certificate fails the download (the browser keeps such captures, since the probe fails first).
 - **Done when:** every engine feature is reachable from the UI. 500 downloads in the list scroll smoothly while 10 are running.
-- Steps (planned 2026-10-29): 1 main window; 2 Add download dialog, capture prompt, notifications; 3 queues and scheduler screen (with the wake-timer warning) — dropped by the user (2026-10-29): queues and schedules stay CLI-only (`omnidm queue …`), plus Start/Stop queue in the toolbar, and there is no wake-timer warning; 4 Settings (categories, autostart, clipboard monitor, live-applied); 5 Details view; 6 site login and "ignore certificate errors" — dropped by the user (2026-10-29); 7 the extension's "Install OmniDm" notice, then the live tests (sleep/wake, Edge).
+- Steps (planned 2026-10-29): 1 main window; 2 Add download dialog, capture prompt, notifications; 3 queues and scheduler screen (with the wake-timer warning) — dropped by the user (2026-10-29): queues and schedules stay CLI-only (`omnidm queue …`), plus Start/Stop queue in the toolbar, and there is no wake-timer warning; 4 Settings (categories, autostart, clipboard monitor, live-applied); 5 Details view; 6 site login and "ignore certificate errors" — dropped by the user (2026-10-29); 7 the extension's "Install OmniDM" notice, then the live tests (sleep/wake, Edge).
 - Step 1 (2026-10-29): main window.
   - Toolbar (Resume, Pause, Delete; Start/Stop queue when a queue is shown; search). Sidebar: All, Downloading, Paused, Completed, Failed, the queues (a dot when running) and the categories, each with a count. Status bar with the total speed.
   - List: name, size, progress, speed, time left, status, added. Click a header to sort (then reverse, then back to the view's own order: newest first, or the queue's order). Only the rows in view are drawn, so 500 rows scroll smoothly (checked with 500 made-up downloads).
@@ -597,7 +597,7 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
   - Capture prompt (on by default): the capture is still probed and accepted at once (the browser cancels its copy), then held with the server's first response kept for 60 s, and a small always-on-top window asks: file name, category (changing it changes the folder), folder with Browse, "Download now", "Later" in a chosen queue, or Cancel. Closing the window cancels. "Download all links" never asks; those were chosen in the extension.
   - After "Download now" the prompt becomes that download's progress window (decided 2026-10-29): bar, downloaded/total, speed with connections, time left, Pause/Resume, Close (the download keeps going). Finished: Open and Show in folder; failed: the error and Retry. It stops being always-on-top, and its title shows the percentage.
   - "Don't ask again" in the prompt, and "Ask before downloading" in the tray menu, turn it off or on. Saved in the new `settings` table (schema version 5), the start of step 4's settings.
-  - A held capture shows as "Asking you" in the list. If OmniDm closes first, it is left paused.
+  - A held capture shows as "Asking you" in the list. If OmniDM closes first, it is left paused.
   - Add download (toolbar button, Ctrl+N): link (taken from the clipboard when a link was copied), file name, connections, folder (from the link's category until the user picks one), "Download now" or "Later" in a queue. No checksum field: the engine doesn't check checksums yet.
   - Windows notifications when a download completes or fails, unless the list window is in front. A `notify_finished` setting turns them off (its switch comes with step 4). In a development build Windows labels them "PowerShell"; the installed app (M7) shows its own name.
 - Step 4 (2026-10-29): Settings (gear button in the toolbar). Every change is saved in the `settings` table and applied at once; the tray's "Ask before downloading" and the Settings page stay in step.
@@ -609,14 +609,14 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 - Step 5 (2026-10-29): Details window (right-click → Details, or double-click / Enter on a running download). One window per download, refreshed twice a second.
   - Map of pieces: the whole file as one bar, each piece in its place and filled as far as it got (done, downloading, waiting), and a table of pieces with each connection's speed.
   - Server: the link, each redirect (status and target), where the file comes from, method, file type, size, resumable, ETag, Last-Modified, referrer and the headers sent (`Authorization`, `Proxy-Authorization` and `Cookie` values hidden).
-  - Log: what happened since OmniDm started (started, what the server sent, redirects, each new connection, retries with the reason, a busy server, a refused link, slow pieces asked for twice, cookies, paused, completed or failed). Kept in memory, at most 500 lines per download; not saved.
+  - Log: what happened since OmniDM started (started, what the server sent, redirects, each new connection, retries with the reason, a busy server, a refused link, slow pieces asked for twice, cookies, paused, completed or failed). Kept in memory, at most 500 lines per download; not saved.
   - Engine: new `Event::Segments` (every piece with its state and speed, each tick) and `Event::Log`; `RemoteInfo.redirects`. Schema version 6 stores each download's redirects and `Content-Type` (the redirect chain postponed from M2).
   - A piece's speed shows once its connection has written to disk (every second by default).
-- Step 7, part 1 (2026-10-29): the extension's "Install OmniDm" notice, with no new permissions.
+- Step 7, part 1 (2026-10-29): the extension's "Install OmniDM" notice, with no new permissions.
   - A badge on the toolbar icon: red "!" while the app can't be found (host not registered), amber "!" when the host ran but the app didn't start; its tooltip says why. It clears once connected and doesn't flicker while reconnecting.
-  - The popup shows a red "Install the OmniDm app" notice with Get OmniDm, How to set up and Check again.
+  - The popup shows a red "Install the OmniDM app" notice with Get OmniDM, How to set up and Check again.
   - Right after the extension is first installed, if the app isn't found, a setup page opens once (not on updates). It explains the steps, has a note for source builds (`.\omnidm-host.exe --register` in PowerShell), and checks every 3 s until it turns green.
-  - "Get OmniDm" points to the GitHub releases page, which has no installer until M7.
+  - "Get OmniDM" points to the GitHub releases page, which has no installer until M7.
 
 ### M6: Media
 - [x] HLS and DASH parsers, variant picker, AES-128. (FFmpeg adapter postponed, see step 3.)
@@ -628,7 +628,7 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
   - HLS: I-frame and backup variants are skipped. Keys and maps carry over until the next tag, and the IV defaults to the sequence number. A byte range without an offset follows the previous one. A header piece means fragmented MP4. A header that changes partway through is refused for now.
   - DASH: uses `dash-mpd-core`, the parser-only half of `dash-mpd` (0.21 now downloads by itself and pulls in about 30 crates). It handles `SegmentTemplate` with a timeline (including `r="-1"`) or `@duration`, settings inherited from the levels above, `$Number%05d$`-style widths, `SegmentList`, and one-file `SegmentBase` (downloaded whole, so no `sidx` reading). Several periods are refused for now.
   - Refused with a clear message: DRM (`SAMPLE-AES`, non-`identity` key formats, any `ContentProtection`, named Widevine/PlayReady/FairPlay where possible), live streams, non-web addresses, and more than 200,000 pieces.
-  - m3u8-rs 6.0.1 drops `EXT-X-KEY:METHOD=NONE` (its IV check is the wrong way round); OmniDm reads it from the unknown tags instead.
+  - m3u8-rs 6.0.1 drops `EXT-X-KEY:METHOD=NONE` (its IV check is the wrong way round); OmniDM reads it from the unknown tags instead.
   - Subtitles aren't offered yet.
 - Step 2 (2026-10-29): downloading the pieces (`Manager::add_media`; nothing calls it yet, that is steps 4–5).
   - The playlist is read before anything is added, so DRM, live streams and dead links are refused with their reason and leave nothing in the list.
@@ -656,9 +656,9 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
   - The background puts `video-button.js` (an unlisted script) into the frame that asked for the playlist (`webRequest` gives its `frameId`), only once the playlist was read as downloadable, and only with the "Show a Download button on videos" setting on (default on). So nothing runs on pages without a video, and no new permissions or manifest content scripts are needed.
   - The button (a download icon) shows over the top-right corner of a video at least 240×135 while the pointer is on it, and stays 1.5 s after it leaves. It follows scrolling and resizing, and moves into a full-screen player (not a bare full-screen `<video>`). It is drawn in a closed shadow root; text from the network is only set as text. Its click doesn't reach the page's player.
   - Clicking it opens a menu of the qualities (name and estimated size) of the videos found in that frame (else the whole tab's), grouped by name when there are several. The app reads them (`mediaLook` → `mediaInfo`, with the page's cookies), and the background keeps the answer for 2 minutes.
-  - Picking a quality sends `media` with `quality` (height + bandwidth): the app's video window opens showing that quality as one line (not the list again), for the name, folder and Download now. The button is a round icon only ("Download with OmniDm" as its tooltip and label).
+  - Picking a quality sends `media` with `quality` (height + bandwidth): the app's video window opens showing that quality as one line (not the list again), for the name, folder and Download now. The button is a round icon only ("Download with OmniDM" as its tooltip and label).
 - Step 6 (2026-10-29, asked for by the user): YouTube, through yt-dlp. The user won't publish the extension in the Chrome Web Store, whose policy forbids YouTube downloading; YouTube's own terms restrict it too.
-  - YouTube plays no standard playlist, and scrambles its format addresses in ways that change often, so OmniDm doesn't unscramble them itself: `omnidm_service::ytdlp` asks yt-dlp (`--dump-single-json --no-playlist --ignore-config`, no console window, 90 s limit, the page's cookies as a `Cookie` header) and downloads the formats with its own engine.
+  - YouTube plays no standard playlist, and scrambles its format addresses in ways that change often, so OmniDM doesn't unscramble them itself: `omnidm_service::ytdlp` asks yt-dlp (`--dump-single-json --no-playlist --ignore-config`, no console window, 90 s limit, the page's cookies as a `Cookie` header) and downloads the formats with its own engine.
   - yt-dlp is fetched on first use from its latest GitHub release into `<data>/tools/`, checked against the release's `SHA2-256SUMS` (a mismatch is deleted), and kept. When reading a video fails, `yt-dlp -U` runs once and the video is read again. `Manager::set_ytdlp` points elsewhere (tests, or a later "my own copy" setting).
   - Formats become a manifest (`StreamKind::YouTube`, with the video's own title): plain `https` formats without DRM; per height and frame rate the best picture (a format with its sound first, then MP4, then bitrate); per language the best sound (M4A first, the original first). Live and upcoming videos are refused.
   - Each format with a known size is cut into 10 MB byte-range pieces downloaded in parallel (YouTube serves big single requests slowly). Tracks gained an `id` (the format number, part of the resume fingerprint, since addresses change) and their own request `headers` (yt-dlp names them per format). Resuming asks yt-dlp again, since YouTube's addresses expire after a few hours.
@@ -684,7 +684,7 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 | R1 | NTLM/Negotiate isn't built into `reqwest` | v1.x: SSPI through the `windows` crate (or the `sspi` crate) on a custom auth step. Until then, report "server requires Windows authentication" and let the browser keep the download |
 | R2 | HTTP/2 multiplexing hides multiple connections | Segments are HTTP/1.1 only (§5.6) |
 | R3 | Matching a download to its request headers in the extension is fuzzy (no shared request ID) | Key by URL and final URL with a short time window. Fall back to cookies plus referrer only. The safe handoff keeps failures harmless |
-| R4 | Links bound to the browser session (one-time tokens, fingerprinted CDNs) fail in OmniDm | The app probes before `accepted`, so the browser keeps the download |
+| R4 | Links bound to the browser session (one-time tokens, fingerprinted CDNs) fail in OmniDM | The app probes before `accepted`, so the browser keeps the download |
 | R5 | Store review of `<all_urls>` + `webRequest` + `nativeMessaging` | Minimal permissions, a clear listing that explains each one, a privacy policy, no remote code |
 | R6 | SmartScreen and antivirus warnings for an unsigned new download manager | Code signing from the first public build, submissions to AV vendors, reproducible builds |
 | R7 | FFmpeg size and licence notices | FFmpeg runs as a separate program. If bundled, ship its licence and a source link; see §16 |
@@ -696,9 +696,9 @@ Every milestone ends with its "done when" check passing in CI or by a scripted m
 
 | Decision | Options | Needed by |
 |---|---|---|
-| FFmpeg distribution | Bundle a build (+~80 MB; GPL or LGPL builds are both compatible with OmniDm's GPL-3.0) / download on first use / user-provided path. **Postponed 2026-10-29:** no FFmpeg for now; decide if it is added later | Later |
+| FFmpeg distribution | Bundle a build (+~80 MB; GPL or LGPL builds are both compatible with OmniDM's GPL-3.0) / download on first use / user-provided path. **Postponed 2026-10-29:** no FFmpeg for now; decide if it is added later | Later |
 | Persist cookies for resume | **Decided 2026-10-28: DPAPI-encrypted** (current user) in the database until the download completes | ✅ |
-| Chrome Web Store | **Decided 2026-10-29: not published there** (the user's choice; it allows OmniDm's YouTube support) | ✅ |
+| Chrome Web Store | **Decided 2026-10-29: not published there** (the user's choice; it allows OmniDM's YouTube support) | ✅ |
 | Minimum browser versions | **Decided 2026-10-28: Chrome/Edge 120+, Firefox 128+** (the ESR line) | ✅ |
 | MSI in addition to NSIS | Only if enterprise deployment matters | M7 |
 | Optional crash reports | None (proposed) or opt-in | M7 |

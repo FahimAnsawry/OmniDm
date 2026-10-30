@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Runs the OmniDm test server by hand, with a few sample files, until Ctrl+C.
+//! Runs the OmniDM test server by hand, with a few sample files, until Ctrl+C.
 //!
 //! `--e2e` serves the browser end-to-end fixtures instead (see `extension/e2e/`) and
 //! prints `E2E <base URL>` once ready.
@@ -41,7 +41,7 @@ fn sample_files(server: &TestServer) {
         ),
         ("/login.bin", FileSpec::new(MIB).html_instead()),
     ];
-    println!("OmniDm test server running. Press Ctrl+C to stop.");
+    println!("OmniDM test server running. Press Ctrl+C to stop.");
     for (path, spec) in files {
         println!("  {}", server.url(path));
         server.set_file(path, spec);
@@ -71,7 +71,7 @@ fn e2e_fixtures(server: &TestServer) {
     );
     // Only as a POST with the form's data.
     server.set_file("/e2e/form.bin", file("form.bin").post_only("id=7"));
-    // Works once: OmniDm's probe is refused, so the browser must keep the download.
+    // Works once: OmniDM's probe is refused, so the browser must keep the download.
     server.set_file("/e2e/expiring.bin", file("expiring.bin").expire_after(1));
     // Logging in sets the cookie, then shows the page.
     server.redirect_setting_cookie("/e2e/login", "/e2e/page.html", 302, "session=e2e; Path=/");
@@ -80,9 +80,9 @@ fn e2e_fixtures(server: &TestServer) {
         "text/html; charset=utf-8",
         r#"<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>OmniDm e2e</title></head>
+<head><meta charset="utf-8"><title>OmniDM e2e</title></head>
 <body>
-  <h1>OmniDm end-to-end fixtures</h1>
+  <h1>OmniDM end-to-end fixtures</h1>
   <p><a id="plain" href="/e2e/plain.bin">Plain file</a></p>
   <p><a id="protected" href="/e2e/protected.bin">Needs the login cookie</a></p>
   <p><a id="referred" href="/e2e/referred.bin">Needs this page as referrer</a></p>

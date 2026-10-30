@@ -62,7 +62,7 @@ const accepted: Message = {
 };
 
 describe('handleCreated', () => {
-  it('hands the download to OmniDm and removes the browser copy when accepted', async () => {
+  it('hands the download to OmniDM and removes the browser copy when accepted', async () => {
     const { d, calls, sent, cache } = deps(accepted);
     cache.rememberHeaders('https://example.com/get?id=1', [{ name: 'User-Agent', value: 'UA' }], 900);
 
@@ -97,7 +97,7 @@ describe('handleCreated', () => {
     expect(payload.body).toBe('aWQ9Nw==');
   });
 
-  it('gives the download back to the browser when OmniDm declines it', async () => {
+  it('gives the download back to the browser when OmniDM declines it', async () => {
     const { d, calls } = deps({
       type: 'captureResult',
       payload: { outcome: 'rejected', reason: 'probeFailed', detail: 'HTTP 403' },

@@ -252,7 +252,7 @@ pub struct DownloadRecord {
 #[derive(Debug)]
 pub enum StoreError {
     Sqlite(rusqlite::Error),
-    /// The database was written by a newer OmniDm.
+    /// The database was written by a newer OmniDM.
     TooNew {
         found: u32,
         supported: u32,
@@ -273,7 +273,7 @@ impl fmt::Display for StoreError {
             Self::Sqlite(e) => write!(f, "database error: {e}"),
             Self::TooNew { found, supported } => write!(
                 f,
-                "database version {found} is newer than this OmniDm supports ({supported})"
+                "database version {found} is newer than this OmniDM supports ({supported})"
             ),
             Self::Corrupt(what) => write!(f, "database contains invalid data: {what}"),
             Self::OutOfRange(v) => write!(f, "value {v} is too large to store"),

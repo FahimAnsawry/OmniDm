@@ -16,7 +16,7 @@
 //! (default 256), `OMNIDM_CRASH_SEED` to replay the same kill timings.
 //!
 //! A process kill keeps data already handed to Windows, unlike a power cut; this test
-//! checks OmniDm's own ordering of writes and checkpoints, not the disk's.
+//! checks OmniDM's own ordering of writes and checkpoints, not the disk's.
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};

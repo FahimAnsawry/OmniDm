@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Request headers and POST bodies seen for recent requests, so a download can be handed
-// to OmniDm with them (plan §9.4). Nothing is stored: entries live 30 s, 200 at most.
+// to OmniDM with them (plan §9.4). Nothing is stored: entries live 30 s, 200 at most.
 
 import type { Header } from '../../protocol/ts/Header';
 
@@ -60,7 +60,7 @@ export class HeaderCache {
   }
 }
 
-/** The parts of `webRequest`'s request body OmniDm can resend. */
+/** The parts of `webRequest`'s request body OmniDM can resend. */
 export interface RequestBodyLike {
   error?: string;
   formData?: Record<string, string[]>;

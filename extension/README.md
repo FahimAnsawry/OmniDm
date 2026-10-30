@@ -1,4 +1,4 @@
-# OmniDm browser extension
+# OmniDM browser extension
 
 Built with [WXT](https://wxt.dev). One TypeScript codebase produces both builds:
 

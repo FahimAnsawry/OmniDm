@@ -9,7 +9,7 @@ pub mod protocol;
 
 use std::path::{Path, PathBuf};
 
-/// The OmniDm apps next to `program` (the host or the CLI), newest first: `OmniDm.exe`
+/// The OmniDM apps next to `program` (the host or the CLI), newest first: `OmniDm.exe`
 /// when installed, `omnidm-app.exe` in a development build. Only these may serve the
 /// pipe; the newest is the one to start.
 pub fn app_paths(program: &Path) -> Vec<PathBuf> {

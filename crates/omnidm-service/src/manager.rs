@@ -290,7 +290,7 @@ impl Manager {
         state.is_busy(id) || state.owner(id).is_some()
     }
 
-    /// Takes over a download from the browser, but only if OmniDm can fetch it itself:
+    /// Takes over a download from the browser, but only if OmniDM can fetch it itself:
     /// the probe runs first, and a failure hands the download back to the browser.
     pub async fn capture(&self, capture: Capture) -> CaptureResult {
         let prepared = match prepare_capture(&capture) {

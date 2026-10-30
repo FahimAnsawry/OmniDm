@@ -14,7 +14,7 @@ import { Icon, type IconName } from "./Icon";
 type Section = "general" | "connections" | "categories";
 
 const SECTIONS: { id: Section; label: string; icon: IconName; about: string }[] = [
-  { id: "general", label: "General", icon: "sliders", about: "Where files go, how OmniDm starts, and when it speaks up." },
+  { id: "general", label: "General", icon: "sliders", about: "Where files go, how OmniDM starts, and when it speaks up." },
   {
     id: "connections",
     label: "Connections",
@@ -126,7 +126,7 @@ export function SettingsPage({
             </button>
           );
         })}
-        {version && <p className="mt-auto px-2.5 text-xs text-[#6b7390]">OmniDm {version}</p>}
+        {version && <p className="mt-auto px-2.5 text-xs text-[#6b7390]">OmniDM {version}</p>}
       </nav>
 
       <main className="flex min-w-0 flex-1 flex-col rounded-2xl border border-white/[0.08] bg-white/[0.024] shadow-[0_24px_48px_-16px_rgb(0_0_0/0.5)]">
@@ -164,7 +164,7 @@ export function SettingsPage({
               </Group>
               <Group title="Behaviour">
                 <Toggle
-                  label="Start OmniDm with Windows"
+                  label="Start OmniDM with Windows"
                   hint="It starts in the tray, ready for the browser."
                   on={settings.startWithWindows}
                   onChange={(on) => save({ startWithWindows: on })}
@@ -239,7 +239,7 @@ export function SettingsPage({
                     ))}
                   </div>
                   <p className="text-xs leading-relaxed text-[#8b93a9]">
-                    A file is split into parts that download side by side, one connection each. OmniDm opens a new
+                    A file is split into parts that download side by side, one connection each. OmniDM opens a new
                     connection only while it makes the download faster, up to the limit above.
                   </p>
                 </div>

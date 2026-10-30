@@ -21,8 +21,8 @@ export function TitleBar({ search, onSearch, searchInput, onSettings, settingsOp
     <header data-tauri-drag-region className="grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center pr-2.5 pl-[18px]">
       <div data-tauri-drag-region className="flex items-center gap-2.5">
         <Logo className="size-5" />
-        <span data-tauri-drag-region className="text-sm font-bold tracking-[-0.01em] text-[#f4f6fb]">
-          OmniDm
+        <span data-tauri-drag-region className="font-logo text-sm font-bold tracking-[-0.01em] text-[#f4f6fb]">
+          OmniDM
         </span>
       </div>
       <label className="flex h-8 w-[380px] items-center gap-2 rounded-[10px] border border-white/[0.09] bg-white/[0.04] pr-1.5 pl-3 focus-within:border-[#6b88ff80] focus-within:bg-white/[0.06]">

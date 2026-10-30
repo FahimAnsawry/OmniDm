@@ -91,7 +91,7 @@ export function DetailsWindow({ id }: { id: number }) {
           </p>
         </div>
         <div className="text-right">
-          <p className="text-2xl font-semibold tabular-nums">{percent}%</p>
+          <p className="font-mono text-2xl font-semibold tabular-nums">{percent}%</p>
           <p className="text-xs text-neutral-500">{STATUS_LABEL[summary.status] ?? summary.status}</p>
         </div>
       </header>
@@ -195,7 +195,7 @@ function Stat({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
       <dt className="text-xs text-neutral-500">{label}</dt>
-      <dd className="mt-0.5 font-medium">{children}</dd>
+      <dd className="mt-0.5 font-mono font-medium">{children}</dd>
     </div>
   );
 }
@@ -283,14 +283,14 @@ function Pieces({ segments, resumable }: { segments: SegmentInfo[]; resumable: b
           const complete = s.written >= length;
           return (
             <tr key={s.start} className="border-t border-neutral-100 dark:border-neutral-800">
-              <td className="py-1.5 pr-3 text-neutral-500">{i + 1}</td>
-              <td className="py-1.5 pr-3">
+              <td className="py-1.5 pr-3 font-mono text-neutral-500">{i + 1}</td>
+              <td className="py-1.5 pr-3 font-mono">
                 {formatBytes(s.start)} – {formatBytes(s.end + 1)}
               </td>
-              <td className="py-1.5 pr-3 text-right">
+              <td className="py-1.5 pr-3 text-right font-mono">
                 {formatBytes(s.written)} <span className="text-neutral-500">/ {formatBytes(length)}</span>
               </td>
-              <td className="py-1.5 pr-3 text-right">{s.active ? formatSpeed(s.speed) : ""}</td>
+              <td className="py-1.5 pr-3 text-right font-mono">{s.active ? formatSpeed(s.speed) : ""}</td>
               <td className={`py-1.5 ${complete ? "text-emerald-700 dark:text-emerald-400" : s.active ? "text-sky-700 dark:text-sky-400" : "text-neutral-500"}`}>
                 {complete ? "Done" : s.active ? "Downloading" : "Waiting"}
               </td>
@@ -353,7 +353,7 @@ function Log({ lines }: { lines: DownloadDetails["log"] }) {
     end.current?.scrollIntoView({ block: "end" });
   }, [count]);
   if (count === 0) {
-    return <p className="py-3 text-[13px] text-neutral-500">Nothing yet. The log starts when OmniDm starts.</p>;
+    return <p className="py-3 text-[13px] text-neutral-500">Nothing yet. The log starts when OmniDM starts.</p>;
   }
   return (
     <div className="py-2">

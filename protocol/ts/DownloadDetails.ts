@@ -34,6 +34,6 @@ segments: Array<SegmentInfo>,
  */
 speed?: number, connections: number, 
 /**
- * What happened since OmniDm started, oldest first.
+ * What happened since OmniDM started, oldest first.
  */
 log: Array<LogLine>, };

@@ -171,7 +171,7 @@ pub enum MediaError {
     Protected(String),
     /// A live broadcast: its playlist never ends.
     Live,
-    /// Valid, but uses something OmniDm can't download yet; says what.
+    /// Valid, but uses something OmniDM can't download yet; says what.
     Unsupported(String),
     /// Not a playlist, or a broken one; says what is wrong.
     Invalid(String),
@@ -185,7 +185,7 @@ impl fmt::Display for MediaError {
                 "This video is protected with DRM ({what}), so it can't be downloaded"
             ),
             MediaError::Live => {
-                f.write_str("This is a live stream, which OmniDm can't download yet")
+                f.write_str("This is a live stream, which OmniDM can't download yet")
             }
             MediaError::Unsupported(what) => f.write_str(what),
             MediaError::Invalid(what) => write!(f, "The video's playlist couldn't be read: {what}"),
@@ -218,7 +218,7 @@ fn join(base: &Url, reference: &str) -> Result<Url, MediaError> {
     match url.scheme() {
         "http" | "https" => Ok(url),
         scheme => Err(MediaError::Unsupported(format!(
-            "The video uses {scheme}: addresses, which OmniDm can't download"
+            "The video uses {scheme}: addresses, which OmniDM can't download"
         ))),
     }
 }

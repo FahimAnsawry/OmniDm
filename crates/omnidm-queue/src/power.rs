@@ -113,7 +113,7 @@ mod system {
             }
             let timer = Handle(timer);
             // Shown by `powercfg /requests` while downloads keep the PC awake.
-            let mut reason: Vec<u16> = "OmniDm is downloading"
+            let mut reason: Vec<u16> = "OmniDM is downloading"
                 .encode_utf16()
                 .chain(std::iter::once(0))
                 .collect();
@@ -198,7 +198,7 @@ mod system {
 
     /// Sleeping and shutting down need the shutdown privilege, which every user has but
     /// which is off until a program turns it on. Turning it on changes nothing else, so
-    /// this also tells whether OmniDm will be allowed to.
+    /// this also tells whether OmniDM will be allowed to.
     pub fn enable_shutdown_privilege() -> io::Result<()> {
         let mut token: HANDLE = std::ptr::null_mut();
         // SAFETY: the current-process pseudo handle needs no closing; `token` receives a

@@ -1,4 +1,4 @@
-# Contributing to OmniDm
+# Contributing to OmniDM
 
 Thanks for helping! A few rules keep the project healthy.
 

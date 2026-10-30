@@ -89,7 +89,7 @@ impl Manager {
                 .flatten()
                 .map(|c| c.settings.name)
         });
-        // If OmniDm closes before the answer, the download is left paused, not lost.
+        // If OmniDM closes before the answer, the download is left paused, not lost.
         let _ = self
             .inner
             .store

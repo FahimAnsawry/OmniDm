@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Command-line client for OmniDm.
+//! Command-line client for OmniDM.
 //!
-//! When the OmniDm app is running, downloads go through it (and appear in its window).
+//! When the OmniDM app is running, downloads go through it (and appear in its window).
 //! Otherwise, or with `--standalone`, or when `OMNIDM_DATA_DIR` names a database of its
 //! own, the command downloads by itself.
 
@@ -27,9 +27,9 @@ use tokio_util::sync::CancellationToken;
 const EXIT_PAUSED: u8 = 130;
 
 #[derive(Parser)]
-#[command(name = "omnidm", version, about = "OmniDm download manager")]
+#[command(name = "omnidm", version, about = "OmniDM download manager")]
 struct Cli {
-    /// Download in this program even when the OmniDm app is running.
+    /// Download in this program even when the OmniDM app is running.
     #[arg(long, global = true)]
     standalone: bool,
     #[command(subcommand)]
@@ -203,14 +203,14 @@ async fn main() -> ExitCode {
         Command::Queue { action } => match app {
             Some(app) => run_queue(action, app).await,
             None => {
-                eprintln!("Error: queues belong to the OmniDm app, and it isn't running");
+                eprintln!("Error: queues belong to the OmniDM app, and it isn't running");
                 ExitCode::FAILURE
             }
         },
         Command::Category { action } => match app {
             Some(app) => run_category(action, app).await,
             None => {
-                eprintln!("Error: categories belong to the OmniDm app, and it isn't running");
+                eprintln!("Error: categories belong to the OmniDM app, and it isn't running");
                 ExitCode::FAILURE
             }
         },
@@ -420,7 +420,7 @@ type AppConnection = tokio::net::windows::named_pipe::NamedPipeClient;
 #[cfg(not(windows))]
 type AppConnection = tokio::io::DuplexStream;
 
-/// The running app, if there is one next to this program. Only an OmniDm app found next
+/// The running app, if there is one next to this program. Only an OmniDM app found next
 /// to the CLI is trusted to serve the pipe.
 #[cfg(windows)]
 async fn connect_to_app() -> Result<Option<AppConnection>, String> {

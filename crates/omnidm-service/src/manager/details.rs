@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! A download's details: its pieces as they are right now, its connections, what the
-//! server said, and a log of what happened since OmniDm started.
+//! server said, and a log of what happened since OmniDM started.
 
 use std::collections::VecDeque;
 use std::time::{SystemTime, UNIX_EPOCH};

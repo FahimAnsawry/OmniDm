@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! HTTP test server with fault injection, used by OmniDm integration tests.
+//! HTTP test server with fault injection, used by OmniDM integration tests.
 //!
 //! Files are generated from a seed, so a test can serve gigabytes without touching the
 //! disk and still check every byte. Each file can be told to misbehave in the ways real

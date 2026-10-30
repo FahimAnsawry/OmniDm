@@ -7,7 +7,7 @@ const ACTION_TEXT: Record<string, string> = {
   sleep: "Putting the PC to sleep",
   hibernate: "Hibernating the PC",
   shutdown: "Shutting down the PC",
-  quit: "Quitting OmniDm",
+  quit: "Quitting OmniDM",
 };
 
 /** The after-queue countdown, with a way out. */

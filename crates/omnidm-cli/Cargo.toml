@@ -1,6 +1,6 @@
 [package]
 name = "omnidm-cli"
-description = "Command-line client for OmniDm."
+description = "Command-line client for OmniDM."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -1,4 +1,4 @@
-# OmniDm desktop app
+# OmniDM desktop app
 
 Tauri 2 shell (`src-tauri/`) with a React + TypeScript UI (`src/`).
 

@@ -20,7 +20,7 @@ describe('badgeFor', () => {
   it('shows nothing while connected or connecting when enabled', () => {
     for (const status of ['connected', 'connecting', 'disconnected'] as const) {
       expect(badgeFor(status).text).toBe('');
-      expect(badgeFor(status).title).toBe('OmniDm (click to disable)');
+      expect(badgeFor(status).title).toBe('OmniDM (click to disable)');
     }
   });
 
@@ -29,7 +29,7 @@ describe('badgeFor', () => {
       const badge = badgeFor(status, false);
       expect(badge.text).toBe('OFF');
       expect(badge.color).toBe('#6b7280');
-      expect(badge.title).toBe('OmniDm is disabled (click to enable)');
+      expect(badge.title).toBe('OmniDM is disabled (click to enable)');
     }
   });
 });

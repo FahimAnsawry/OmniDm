@@ -161,7 +161,7 @@ export function MediaWindow({ offer }: { offer: number }) {
 
       <div className="mt-5 flex flex-col gap-[18px] px-1">
         <div className="flex items-center gap-4">
-          <FileIcon name={isSoundOnly ? "audio.m4a" : "video.mp4"} className="h-[66px] w-14" />
+          <FileIcon name={isSoundOnly ? "audio.m4a" : "video.mp4"} className="size-14" />
           <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
             <div className="flex max-w-full items-center gap-2">
               <input
@@ -289,7 +289,7 @@ export function MediaWindow({ offer }: { offer: number }) {
                       <Icon name={q.schedule ? "moon" : "queue"} className="text-[#8b93a9]" />
                       <span className="flex-1">Add to {q.name}</span>
                       {q.nextStart && (
-                        <span className="text-xs text-[#8b93a9] tabular-nums">{q.nextStart.slice(-5)}</span>
+                        <span className="font-mono text-xs text-[#8b93a9] tabular-nums">{q.nextStart.slice(-5)}</span>
                       )}
                     </button>
                   ))}

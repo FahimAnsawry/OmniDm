@@ -3,7 +3,7 @@
 //! YouTube, through yt-dlp. YouTube doesn't play videos from a standard playlist: the
 //! addresses of its formats are hidden in its player and scrambled, and the scrambling
 //! changes often. yt-dlp (public domain, https://github.com/yt-dlp/yt-dlp) keeps up with
-//! it, so OmniDm asks yt-dlp for a video's formats and real addresses, then downloads them
+//! it, so OmniDM asks yt-dlp for a video's formats and real addresses, then downloads them
 //! itself, in pieces, like any other stream.
 //!
 //! The program is fetched from yt-dlp's latest GitHub release the first time it is needed,
@@ -258,7 +258,7 @@ impl YtDlp {
         }
         let Some(release) = &self.release else {
             return Err(MediaError::Unsupported(format!(
-                "yt-dlp, which OmniDm needs for YouTube, isn't at {}",
+                "yt-dlp, which OmniDM needs for YouTube, isn't at {}",
                 self.path.display()
             ))
             .into());
@@ -680,7 +680,7 @@ pub fn manifest_from(json: &str) -> Result<Manifest, MediaError> {
         return Err(if locked {
             MediaError::Protected("YouTube".into())
         } else {
-            MediaError::Unsupported("YouTube offered no format OmniDm can download".into())
+            MediaError::Unsupported("YouTube offered no format OmniDM can download".into())
         });
     }
 
@@ -780,7 +780,7 @@ pub fn manifest_from(json: &str) -> Result<Manifest, MediaError> {
     })
 }
 
-/// A format yt-dlp lists, if OmniDm can download it: a plain web address (not a playlist
+/// A format yt-dlp lists, if OmniDM can download it: a plain web address (not a playlist
 /// of its own, nor a storyboard of thumbnails), without DRM.
 fn format_of(format: &Value) -> Option<Format> {
     let protocol = format["protocol"].as_str().unwrap_or("https");

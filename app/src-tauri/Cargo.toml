@@ -1,6 +1,6 @@
 [package]
 name = "omnidm-app"
-description = "OmniDm desktop app."
+description = "OmniDM desktop app."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

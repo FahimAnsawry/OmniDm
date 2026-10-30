@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Connects the browser to the OmniDm app: offers new downloads to it (the safe handoff),
-// remembers request headers for them, adds the "Download with OmniDm" menu items, and
+// Connects the browser to the OmniDM app: offers new downloads to it (the safe handoff),
+// remembers request headers for them, adds the "Download with OmniDM" menu items, and
 // notices videos playing on pages.
 
 import { storage } from '#imports';
@@ -93,7 +93,7 @@ export default defineBackground(() => {
     })
     .catch(() => undefined);
 
-  // --- the toolbar badge: the "Install OmniDm" notice while the app can't be found, or
+  // --- the toolbar badge: the "Install OmniDM" notice while the app can't be found, or
   // "OFF" when the extension is disabled ---
   let linkStatus: LinkStatus = link.status;
   let currentSettings: CaptureSettings = DEFAULT_SETTINGS;
@@ -343,15 +343,15 @@ export default defineBackground(() => {
         }
       });
     }
-    browser.contextMenus.create({ id: MENU_LINK, title: 'Download with OmniDm', contexts: ['link'] });
+    browser.contextMenus.create({ id: MENU_LINK, title: 'Download with OmniDM', contexts: ['link'] });
     browser.contextMenus.create({
       id: MENU_ALL,
-      title: 'Download all links with OmniDm',
+      title: 'Download all links with OmniDM',
       contexts: ['page'],
     });
     browser.contextMenus.create({
       id: MENU_SELECTED,
-      title: 'Download selected links with OmniDm',
+      title: 'Download selected links with OmniDM',
       contexts: ['selection'],
     });
   });
@@ -414,9 +414,9 @@ export default defineBackground(() => {
         const reply = await link.request({ type: 'mediaLook', payload }, timeout);
         if (reply.type === 'mediaInfo') video = { url: item.url, info: reply.payload as MediaInfo };
         else if (reply.type === 'error') video = { url: item.url, error: reply.payload.message };
-        else video = { url: item.url, error: 'OmniDm gave an unexpected answer.' };
+        else video = { url: item.url, error: 'OmniDM gave an unexpected answer.' };
       } catch (e) {
-        // Not kept: OmniDm may be back next time.
+        // Not kept: OmniDM may be back next time.
         return { url: item.url, error: e instanceof Error ? e.message : String(e) };
       }
       if (video.info) looks.set(item.url, { at: Date.now(), video });
@@ -479,7 +479,7 @@ export default defineBackground(() => {
     return undefined;
   });
 
-  // Keep the connection (and the service worker) alive while OmniDm runs.
+  // Keep the connection (and the service worker) alive while OmniDM runs.
   setInterval(() => {
     if (link.status === 'connected') {
       link.request({ type: 'ping' }, 5_000).catch(() => undefined);

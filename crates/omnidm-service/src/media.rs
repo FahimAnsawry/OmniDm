@@ -453,7 +453,7 @@ fn piece_name(index: usize) -> String {
 
 /// Tells piece lists apart: the track's id, if it has one, and every piece's address
 /// without its query (signed links get new tokens) and its byte range. FNV-1a, so it stays
-/// the same across OmniDm versions.
+/// the same across OmniDM versions.
 fn fingerprint(track: &Track) -> String {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     let mut add = |bytes: &[u8]| {

@@ -1,6 +1,6 @@
 {
   "name": "omnidm-extension",
-  "description": "OmniDm browser extension: sends downloads to the OmniDm app.",
+  "description": "OmniDM browser extension: sends downloads to the OmniDM app.",
   "private": true,
   "version": "0.1.0",
   "license": "GPL-3.0-or-later",
@@ -17,6 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },

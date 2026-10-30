@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The `omnidm` command: downloads through the running OmniDm app, or on its own (with the
+//! The `omnidm` command: downloads through the running OmniDM app, or on its own (with the
 //! engine and the store) when the app isn't running.
 
 mod remote;
@@ -53,7 +53,7 @@ pub enum CliError {
     Engine(omnidm_core::engine::EngineError),
     Io(std::io::Error),
     Http(String),
-    /// Reported by the running OmniDm app.
+    /// Reported by the running OmniDM app.
     App(String),
 }
 
@@ -93,7 +93,7 @@ pub async fn get(
 ) -> Result<GetResult, CliError> {
     if opts.queue.is_some() {
         return Err(CliError::App(
-            "queues belong to the OmniDm app; start it first".into(),
+            "queues belong to the OmniDM app; start it first".into(),
         ));
     }
     std::fs::create_dir_all(data_dir)?;
@@ -204,7 +204,7 @@ pub async fn get(
 /// Name of the database file inside the data folder.
 pub const DATABASE_FILE: &str = "omnidm.db";
 
-/// Where OmniDm keeps its database: `OMNIDM_DATA_DIR` if set, else `%APPDATA%\OmniDm`.
+/// Where OmniDM keeps its database: `OMNIDM_DATA_DIR` if set, else `%APPDATA%\OmniDm`.
 pub fn data_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("OMNIDM_DATA_DIR") {
         return PathBuf::from(dir);

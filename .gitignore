@@ -12,7 +12,7 @@ dist/
 /app/src-tauri/target/
 /app/src-tauri/gen/schemas/
 
-# OmniDm runtime files
+# OmniDM runtime files
 *.omnidm-part
 *.omnidm-media/
 

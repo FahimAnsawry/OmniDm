@@ -1,1 +1,21 @@
 @import "tailwindcss";
+@import "@fontsource-variable/geist";
+
+@theme {
+  --font-sans: "Geist Variable", "Segoe UI", system-ui, sans-serif;
+}
+
+/* Everything clickable shows the hand cursor; a disabled one doesn't. */
+@layer base {
+  button,
+  [role="button"],
+  summary,
+  select {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"],
+  select:disabled {
+    cursor: not-allowed;
+  }
+}

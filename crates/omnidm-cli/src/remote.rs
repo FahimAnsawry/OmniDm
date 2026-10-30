@@ -43,7 +43,7 @@ impl<S: AsyncRead + AsyncWrite> Conversation<S> {
             .map_err(|e| CliError::App(e.to_string()))?;
         write_frame_async(&mut self.writer, &bytes)
             .await
-            .map_err(|e| CliError::App(format!("lost the connection to OmniDm: {e}")))?;
+            .map_err(|e| CliError::App(format!("lost the connection to OmniDM: {e}")))?;
         Ok(id)
     }
 
@@ -51,8 +51,8 @@ impl<S: AsyncRead + AsyncWrite> Conversation<S> {
     async fn recv(&mut self) -> Result<Envelope, CliError> {
         let frame = read_frame_async(&mut self.reader, MAX_REPLY)
             .await
-            .map_err(|e| CliError::App(format!("lost the connection to OmniDm: {e}")))?
-            .ok_or_else(|| CliError::App("OmniDm closed the connection".into()))?;
+            .map_err(|e| CliError::App(format!("lost the connection to OmniDM: {e}")))?
+            .ok_or_else(|| CliError::App("OmniDM closed the connection".into()))?;
         serde_json::from_slice(&frame).map_err(|e| CliError::App(format!("unreadable reply: {e}")))
     }
 
@@ -164,5 +164,5 @@ pub async fn request<S: AsyncRead + AsyncWrite>(
 }
 
 fn unexpected(message: &Message) -> CliError {
-    CliError::App(format!("unexpected reply from OmniDm: {message:?}"))
+    CliError::App(format!("unexpected reply from OmniDM: {message:?}"))
 }

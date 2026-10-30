@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! OmniDm desktop app: runs the download service, serves the extension and the CLI over
+//! OmniDM desktop app: runs the download service, serves the extension and the CLI over
 //! the named pipe, and shows the download list.
 
 mod capture;
@@ -55,7 +55,7 @@ pub fn run() {
                 return;
             }
             Err(e) => {
-                eprintln!("OmniDm: can't open its pipe: {e}");
+                eprintln!("OmniDM: can't open its pipe: {e}");
                 std::process::exit(1);
             }
         }
@@ -113,7 +113,7 @@ pub fn run() {
                 return;
             };
             if window.label() == "main" {
-                // Closing the window keeps OmniDm (and its downloads) running in the tray.
+                // Closing the window keeps OmniDM (and its downloads) running in the tray.
                 // The page hides it once its closing animation has played.
                 api.prevent_close();
             } else if let Some(id) = capture::download_of(window.label()) {
@@ -157,7 +157,7 @@ pub fn run() {
             media::accept_media
         ])
         .run(tauri::generate_context!())
-        .expect("error while running OmniDm");
+        .expect("error while running OmniDM");
 }
 
 #[tauri::command]
@@ -391,7 +391,7 @@ fn power() -> Arc<dyn Power> {
     #[cfg(windows)]
     match SystemPower::new() {
         Ok(power) => return Arc::new(power),
-        Err(e) => eprintln!("OmniDm: can't use power management: {e}"),
+        Err(e) => eprintln!("OmniDM: can't use power management: {e}"),
     }
     Arc::new(NoPower)
 }
@@ -457,7 +457,7 @@ fn forward_updates(app: AppHandle, manager: &Manager) {
 }
 
 fn build_tray(app: &tauri::App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Open OmniDm", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Open OmniDM", true, None::<&str>)?;
     let pause = MenuItem::with_id(app, "pause-all", "Pause all", true, None::<&str>)?;
     let resume = MenuItem::with_id(app, "resume-all", "Resume all", true, None::<&str>)?;
     let asks = capture::saved_choice(&app.state::<Manager>());
@@ -485,7 +485,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         ],
     )?;
     let mut tray = TrayIconBuilder::new()
-        .tooltip("OmniDm")
+        .tooltip("OmniDM")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -534,7 +534,7 @@ pub(crate) fn show_window(app: &AppHandle) {
     }
 }
 
-/// Where OmniDm keeps its database: `OMNIDM_DATA_DIR` if set, else `%APPDATA%\OmniDm`.
+/// Where OmniDM keeps its database: `OMNIDM_DATA_DIR` if set, else `%APPDATA%\OmniDm`.
 fn data_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("OMNIDM_DATA_DIR") {
         return PathBuf::from(dir);
@@ -555,7 +555,7 @@ fn downloads_dir(app: &AppHandle) -> PathBuf {
         .unwrap_or_else(|_| data_dir().join("Downloads"))
 }
 
-/// Tells the running OmniDm to open its window.
+/// Tells the running OmniDM to open its window.
 #[cfg(windows)]
 async fn ask_running_app_to_show(pipe_name: &str) {
     use omnidm_ipc::frame::write_frame_async;

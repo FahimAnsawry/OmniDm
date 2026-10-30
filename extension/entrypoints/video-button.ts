@@ -3,7 +3,7 @@
 // The Download button on a video. The background puts this script into a frame only once
 // it found a video playlist there. The button shows over the top-right corner of a video
 // while the pointer is on it; it opens a menu of the video's qualities, and picking one
-// opens OmniDm's video window with that quality chosen.
+// opens OmniDM's video window with that quality chosen.
 //
 // Everything is drawn in a closed shadow root, so the page's styles can't reach it, and
 // text from the network is only ever set as text.
@@ -18,7 +18,7 @@ const MIN_WIDTH = 240;
 const MIN_HEIGHT = 135;
 /** How long the button stays after the pointer leaves the video. */
 const HIDE_AFTER_MS = 1500;
-/** How long "Opened in OmniDm" shows before the menu closes. */
+/** How long "Opened in OmniDM" shows before the menu closes. */
 const DONE_SHOWN_MS = 1500;
 
 /** A video of this frame and what it offers, as the background answers `videoQualities`. */
@@ -104,7 +104,7 @@ button { font: inherit; color: inherit; }
 .error { padding: 12px 10px 8px; color: #ff9a9e; }
 `;
 
-/** The OmniDm mark: a ring broken by a downward chevron, in sunset colours. */
+/** The OmniDM mark: a ring broken by a downward chevron, in sunset colours. */
 const LOGO =
   '<svg class="logo" viewBox="78 70 356 356" aria-hidden="true"><defs><linearGradient id="s" gradientUnits="userSpaceOnUse" x1="106" y1="76" x2="406" y2="420"><stop offset="0" stop-color="#ff8a4c"/><stop offset="1" stop-color="#ee3f6a"/></linearGradient><mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><path d="M172 296L256 380L340 296" fill="none" stroke="#000" stroke-width="96" stroke-linejoin="miter"/></mask></defs><circle cx="256" cy="226" r="122" fill="none" stroke="url(#s)" stroke-width="56" mask="url(#m)"/><path d="M172 296L256 380L340 296" fill="none" stroke="url(#s)" stroke-width="56" stroke-linejoin="miter"/></svg>';
 
@@ -149,7 +149,7 @@ function start() {
   const host = document.createElement('omnidm-video-button');
   host.style.cssText = 'all: initial; position: fixed; z-index: 2147483647; top: 0; left: 0; display: none;';
   const root = host.attachShadow({ mode: 'closed' });
-  root.innerHTML = `<style>${CSS}</style><div class="wrap"><button class="button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Download with OmniDm" title="Download with OmniDm">${LOGO}<span class="rule"></span>${CHEVRON}<span class="close" role="button" tabindex="0" aria-label="Hide button" title="Hide button on this video">${CLOSE_ICON}</span></button><div class="menu" role="menu" hidden></div></div>`;
+  root.innerHTML = `<style>${CSS}</style><div class="wrap"><button class="button" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Download with OmniDM" title="Download with OmniDM">${LOGO}<span class="rule"></span>${CHEVRON}<span class="close" role="button" tabindex="0" aria-label="Hide button" title="Hide button on this video">${CLOSE_ICON}</span></button><div class="menu" role="menu" hidden></div></div>`;
   const button = root.querySelector<HTMLButtonElement>('.button')!;
   const closeBtn = root.querySelector<HTMLSpanElement>('.close')!;
   const menu = root.querySelector<HTMLDivElement>('.menu')!;
@@ -167,7 +167,7 @@ function start() {
     return false;
   };
   const send = <T>(message: object): Promise<T> =>
-    alive() ? browser.runtime.sendMessage(message) : Promise.reject(new Error('OmniDm was reloaded'));
+    alive() ? browser.runtime.sendMessage(message) : Promise.reject(new Error('OmniDM was reloaded'));
 
   let target: HTMLVideoElement | undefined;
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
@@ -293,17 +293,17 @@ function start() {
   };
 
   const choose = async (url: string, quality: { height?: number; bandwidth: number }) => {
-    say('note', 'Opening OmniDm…');
+    say('note', 'Opening OmniDM…');
     try {
       const reply = await send<{ ok: true } | { error: string }>({ type: 'videoChoose', url, quality });
       if ('error' in reply) {
         say('error', reply.error);
         return;
       }
-      say('note', 'Opened in OmniDm');
+      say('note', 'Opened in OmniDM');
       setTimeout(() => hide(true), DONE_SHOWN_MS);
     } catch {
-      say('error', "OmniDm couldn't be reached.");
+      say('error', "OmniDM couldn't be reached.");
     }
   };
 
@@ -406,7 +406,7 @@ function start() {
       const reply = await send<{ videos: FrameVideo[] }>({ type: 'videoQualities' });
       videos = reply.videos;
     } catch {
-      say('error', "OmniDm couldn't be reached.");
+      say('error', "OmniDM couldn't be reached.");
       return;
     }
     if (!menuOpen) return;

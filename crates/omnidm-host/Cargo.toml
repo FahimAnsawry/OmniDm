@@ -1,6 +1,6 @@
 [package]
 name = "omnidm-host"
-description = "Native messaging host that connects the OmniDm browser extension to the app."
+description = "Native messaging host that connects the OmniDM browser extension to the app."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
