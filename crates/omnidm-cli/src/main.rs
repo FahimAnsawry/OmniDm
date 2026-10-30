@@ -266,6 +266,15 @@ async fn run_category(action: CategoryCommand, app: AppConnection) -> ExitCode {
     }
 }
 
+/// The name this program was started as: `omnidm` in a source build, `omnidm-cli` once
+/// installed (next to `OmniDm.exe`, which Windows treats as the same name as `omnidm.exe`).
+fn program_name() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.file_stem()?.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "omnidm".into())
+}
+
 /// "starts 02:00 weekdays, stops 07:00, wakes the PC (next start 2026-10-30 02:00)".
 fn describe(schedule: &QueueSchedule, next_start: Option<&str>) -> String {
     let mut parts = Vec::new();
@@ -341,7 +350,7 @@ async fn run_queue(action: QueueCommand, app: AppConnection) -> ExitCode {
                 if off {
                     format!("Queue {name} now starts only by hand.")
                 } else {
-                    format!("Scheduled queue {name}. See it with: omnidm queue list")
+                    format!("Scheduled queue {name}. See it with: {} queue list", program_name())
                 },
             )
         }

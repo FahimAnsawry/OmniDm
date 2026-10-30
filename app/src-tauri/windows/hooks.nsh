@@ -6,9 +6,24 @@
 ;   /AUTOSTART, /NOAUTOSTART      start OmniDM with Windows, or not (no flag: left as it is)
 ; and OmniDm.exe --uninstall runs the uninstaller silently with:
 ;   /DELETEDATA                   also delete the download list and settings
-; The browser extension's link (the native messaging host) is always registered.
+; The browser extension's link (the native messaging host) is always registered, and the
+; install folder is put on the user's PATH so `omnidm-cli` works in any terminal.
+
+; Adds (ADD = 1) or removes (ADD = 0) the install folder in the user's PATH. The registry
+; value is read unexpanded and written back as REG_EXPAND_SZ, so entries like
+; %USERPROFILE%\bin survive. The folder goes through an environment variable, so no
+; character in it needs quoting.
+!macro OMNIDM_USER_PATH ADD
+  System::Call 'Kernel32::SetEnvironmentVariable(t "OMNIDM_DIR", t "$INSTDIR")i'
+  nsExec::Exec `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$k = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment'); $$p = $$k.GetValue('Path', '', 'DoNotExpandEnvironmentNames'); $$d = $$env:OMNIDM_DIR.TrimEnd('\'); $$l = @($$p -split ';' | Where-Object { $$_ -and $$_.TrimEnd('\') -ne $$d }); if (${ADD}) { $$l += $$d }; $$k.SetValue('Path', ($$l -join ';'), 'ExpandString')"`
+  Pop $R0
+  ; Tells open programs (Explorer, new terminals) that PATH changed.
+  SendMessage 0xFFFF 0x1A 0 "STR:Environment" /TIMEOUT=5000
+!macroend
 
 !macro NSIS_HOOK_POSTINSTALL
+  !insertmacro OMNIDM_USER_PATH 1
+
   ; Lets Chrome, Edge, Chromium and Firefox start the host, which connects the
   ; extension to OmniDM.
   ExecWait '"$INSTDIR\omnidm-host.exe" --register'
@@ -47,6 +62,7 @@
     ExecWait '"$INSTDIR\omnidm-host.exe" --unregister'
     nsExec::Exec 'taskkill /F /IM omnidm-host.exe'
     Pop $R0
+    !insertmacro OMNIDM_USER_PATH 0
   ${EndIf}
 !macroend
 

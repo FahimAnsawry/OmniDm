@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
-    "externalBin": ["binaries/omnidm-host"]
+    "externalBin": ["binaries/omnidm-host", "binaries/omnidm-cli"]
   }
 }
