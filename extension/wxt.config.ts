@@ -18,7 +18,7 @@ export default defineConfig({
   }),
   manifest: ({ browser }) => ({
     name: 'OmniDM',
-    description: 'Send downloads from your browser to the OmniDM download manager.',
+    description: 'Download files with Omni Download Manager',
     action: {
       default_title: 'OmniDM (click to disable)',
     },
