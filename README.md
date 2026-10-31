@@ -92,7 +92,7 @@ OmniDM splits every download into many parallel connections, survives crashes an
 <br>
 
 <div align="center">
-  <img src="docs/assets/readme/windows.png" alt="OmniDM's download prompt and video quality window" width="100%">
+  <img src="docs/assets/readme/windows.png" alt="OmniDM's download prompt, download progress, download complete and video quality windows" width="100%">
 </div>
 
 <br>
