@@ -343,16 +343,19 @@ export default defineBackground(() => {
         }
       });
     }
-    browser.contextMenus.create({ id: MENU_LINK, title: 'Download with OmniDM', contexts: ['link'] });
-    browser.contextMenus.create({
-      id: MENU_ALL,
-      title: 'Download all links with OmniDM',
-      contexts: ['page'],
-    });
-    browser.contextMenus.create({
-      id: MENU_SELECTED,
-      title: 'Download selected links with OmniDM',
-      contexts: ['selection'],
+    // Menus survive updates and reloads, so clear the old ones before adding them again.
+    void browser.contextMenus.removeAll().then(() => {
+      browser.contextMenus.create({ id: MENU_LINK, title: 'Download with OmniDM', contexts: ['link'] });
+      browser.contextMenus.create({
+        id: MENU_ALL,
+        title: 'Download all links with OmniDM',
+        contexts: ['page'],
+      });
+      browser.contextMenus.create({
+        id: MENU_SELECTED,
+        title: 'Download selected links with OmniDM',
+        contexts: ['selection'],
+      });
     });
   });
   browser.contextMenus.onClicked.addListener(async (info, tab) => {

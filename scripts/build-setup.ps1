@@ -8,8 +8,8 @@
 #      plus the installer's update signature;
 #   3. the setup window (installer/), with that NSIS installer inside it;
 #   4. the browser extension for Chromium browsers and for Firefox;
-#   5. the release files: OmniDM-<version>.zip for people (the setup, "How to install.html"
-#      and an Extension folder holding OmniDM_chrome and OmniDM_firefox), and for the app's
+#   5. the release files: OmniDM-<version>.zip for people (an OmniDM folder holding the setup,
+#      "How to install.html" and an Extension folder with OmniDM_chrome and OmniDM_firefox), and for the app's
 #      updater the NSIS installer and latest.json. Upload all three to the GitHub release v<version>.
 #
 # Signing the update needs the private key made with `tauri signer generate`, kept out of
@@ -83,7 +83,7 @@ if ($code) { exit $code }
 Write-Host "5/5  Release files"
 $out = "target\release\publish\v$version"
 if (Test-Path $out) { Remove-Item -Recurse -Force $out }
-$stage = "$out\OmniDM-$version"
+$stage = "$out\OmniDM"
 New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item $setup $stage
 New-Item -ItemType Directory -Force "$stage\Extension" | Out-Null
@@ -91,7 +91,8 @@ Copy-Item -Recurse extension\.output\chrome-mv3 "$stage\Extension\OmniDM_chrome"
 Copy-Item -Recurse extension\.output\firefox-mv3 "$stage\Extension\OmniDM_firefox"
 (Get-Content docs\install-guide.html -Raw).Replace('{{VERSION}}', $version) |
     Set-Content -NoNewline -Encoding utf8 "$stage\How to install.html"
-Compress-Archive -Path "$stage\*" -DestinationPath "$out\OmniDM-$version.zip"
+# The folder itself goes in, so unzipping gives one OmniDM folder rather than loose files.
+Compress-Archive -Path $stage -DestinationPath "$out\OmniDM-$version.zip"
 Remove-Item -Recurse -Force $stage
 
 # The updater reads latest.json from the newest release and downloads the NSIS installer

@@ -3,7 +3,8 @@
 //! Updates: OmniDM looks for a newer version on GitHub (the release's `latest.json`) a
 //! little after it starts, then twice a day, and offers it in a small window. Installing
 //! pauses the downloads, runs the signed installer quietly and restarts OmniDM, which
-//! then continues them.
+//! then continues them. The first start of a new version, by update or by its setup, shows
+//! what changed in the same window.
 
 use std::sync::Mutex;
 use std::time::Duration;
@@ -25,12 +26,21 @@ const BACKGROUND: Color = Color(0, 0, 0, 0);
 const FIRST_CHECK: Duration = Duration::from_secs(30);
 const CHECK_EVERY: Duration = Duration::from_secs(12 * 60 * 60);
 
-/// The update the window offers.
+/// The version that ran last, to notice the first start of a new one.
+const VERSION_SETTING: &str = "last_version";
+
+// docs/releases/<version>.md, built in by build.rs.
+include!(concat!(env!("OUT_DIR"), "/release_notes.rs"));
+
+/// The update the window offers, or the one just installed.
 #[derive(Default)]
-pub struct Found(Mutex<Option<Update>>);
+pub struct Found {
+    offer: Mutex<Option<Update>>,
+    installed: Mutex<Option<UpdateInfo>>,
+}
 
 /// What the window shows of it.
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateInfo {
     version: String,
@@ -38,6 +48,9 @@ pub struct UpdateInfo {
     notes: Option<String>,
     /// When it was published, in seconds since 1970.
     date: Option<i64>,
+    /// Already installed: `version` is running now, and `previous` ran before it.
+    installed: bool,
+    previous: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -52,7 +65,13 @@ struct Downloaded {
 /// `OMNIDM_UPDATE_CHECK` is set.
 pub fn start(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
-        app.state::<Manager>().resume_after_restart().await;
+        let manager = app.state::<Manager>();
+        // Set until resume_after_restart reads it: OmniDM restarted into an update.
+        let restarted = manager
+            .setting("resume_after_restart")
+            .is_some_and(|s| !s.is_empty());
+        manager.resume_after_restart().await;
+        announce_new_version(&app, restarted);
         if cfg!(debug_assertions) && std::env::var_os("OMNIDM_UPDATE_CHECK").is_none() {
             return;
         }
@@ -64,6 +83,40 @@ pub fn start(app: AppHandle) {
             tokio::time::sleep(CHECK_EVERY).await;
         }
     });
+}
+
+/// Opens the window saying what changed, at the first start of a new version: one that
+/// differs from the last version that ran, or (before OmniDM noted versions) one an update
+/// restarted into. Not on a first install.
+fn announce_new_version(app: &AppHandle, restarted: bool) {
+    let manager = app.state::<Manager>();
+    let current = app.package_info().version.to_string();
+    let previous = manager.setting(VERSION_SETTING);
+    if previous.as_deref() != Some(current.as_str())
+        && let Err(e) = manager.set_setting(VERSION_SETTING, &current)
+    {
+        eprintln!("OmniDM: can't note its version: {e}");
+    }
+    let new = match &previous {
+        Some(previous) => *previous != current,
+        None => restarted,
+    };
+    if !new {
+        return;
+    }
+    let notes = RELEASE_NOTES
+        .iter()
+        .find(|(version, _)| *version == current)
+        .map(|(_, notes)| notes.trim().to_string());
+    *app.state::<Found>().installed.lock().unwrap() = Some(UpdateInfo {
+        version: current.clone(),
+        current,
+        notes,
+        date: None,
+        installed: true,
+        previous,
+    });
+    open(app);
 }
 
 /// Looks for a newer version and opens the window if there is one. `asked`: from the tray's
@@ -79,7 +132,7 @@ pub async fn check(app: &AppHandle, asked: bool) -> Result<(), String> {
     .await;
     match found {
         Ok(Some(update)) => {
-            *app.state::<Found>().0.lock().unwrap() = Some(update);
+            *app.state::<Found>().offer.lock().unwrap() = Some(update);
             open(app);
         }
         Ok(None) if asked => {
@@ -134,13 +187,16 @@ fn open(app: &AppHandle) {
 
 #[tauri::command]
 pub fn update_info(app: AppHandle, found: tauri::State<'_, Found>) -> Option<UpdateInfo> {
-    let found = found.0.lock().unwrap();
-    let update = found.as_ref()?;
+    let Some(update) = found.offer.lock().unwrap().clone() else {
+        return found.installed.lock().unwrap().clone();
+    };
     Some(UpdateInfo {
         version: update.version.clone(),
         current: app.package_info().version.to_string(),
         notes: update.body.clone(),
         date: update.date.map(|d| d.unix_timestamp()),
+        installed: false,
+        previous: None,
     })
 }
 
@@ -150,7 +206,7 @@ pub fn update_info(app: AppHandle, found: tauri::State<'_, Found>) -> Option<Upd
 #[tauri::command]
 pub async fn install_update(app: AppHandle, found: tauri::State<'_, Found>) -> Result<(), String> {
     let update = found
-        .0
+        .offer
         .lock()
         .unwrap()
         .clone()

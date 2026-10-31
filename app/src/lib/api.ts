@@ -52,7 +52,7 @@ export type AppSettings = {
   startWithWindows: boolean;
 };
 
-/** A newer OmniDM, as the update window shows it. */
+/** A newer OmniDM, or the one just installed, as the update window shows it. */
 export type UpdateInfo = {
   version: string;
   /** The version running now. */
@@ -60,6 +60,9 @@ export type UpdateInfo = {
   notes: string | null;
   /** When it was published, in seconds since 1970. */
   date: number | null;
+  /** Already installed: `version` is running now, and `previous` ran before it. */
+  installed: boolean;
+  previous: string | null;
 };
 
 export const api = {
