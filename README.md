@@ -240,7 +240,6 @@ The full design lives in [`docs/omnidm-plan.md`](docs/omnidm-plan.md).
 - [x] Queues, scheduler and categories
 - [x] HLS, DASH and YouTube video
 - [x] Auto-update
-- [ ] Extensions in the Chrome Web Store, Edge Add-ons and Firefox Add-ons
 - [ ] Joining video and audio into one file (FFmpeg)
 - [ ] FTP / FTPS, NTLM sign-in and HTTP/3
 - [ ] macOS and Linux
