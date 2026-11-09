@@ -52,6 +52,9 @@ pub struct QualityChoice {
     pub height: Option<u32>,
     /// Bits per second.
     pub bandwidth: u64,
+    /// Which video of a post holding several (1 is the first).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -141,7 +144,7 @@ pub struct MediaJob {
     /// Pieces downloading at once.
     pub parallel: usize,
     pub cancel: CancellationToken,
-    /// For a YouTube video: what reads it, instead of a playlist.
+    /// For a video page (YouTube, TikTok…): what reads it, instead of a playlist.
     pub ytdlp: Option<Arc<YtDlp>>,
 }
 
@@ -195,6 +198,7 @@ pub async fn run_media(
         quality: Some(QualityChoice {
             height: quality.height,
             bandwidth: quality.bandwidth,
+            video: quality.video,
         }),
         audio: sound.map(|a| AudioChoice {
             name: a.name.clone(),
@@ -209,7 +213,7 @@ pub async fn run_media(
     }
     let mut ready = Vec::new();
     for (name, source) in tracks {
-        let track = match source {
+        let mut track = match source {
             Source::Track(track) => track.clone(),
             Source::Playlist(url) => {
                 let Some((text, url)) =
@@ -220,6 +224,7 @@ pub async fn run_media(
                 hls::read_track(text.as_bytes(), &url)?
             }
         };
+        take_cookies(&request, &mut track);
         ready.push((name, track));
     }
 
@@ -282,8 +287,30 @@ pub async fn run_media(
     Ok(MediaOutcome::Done(joined))
 }
 
-/// The quality chosen before, or the closest to it: the same height first, then the
-/// nearest bandwidth. Without a choice, the best.
+/// Moves the cookies a track's pieces need (its `Cookie` header, which requests don't send
+/// as such) into the download's cookie jar, for the host its pieces come from.
+fn take_cookies(request: &Request, track: &mut Track) {
+    let Some(url) = track
+        .init
+        .iter()
+        .chain(&track.pieces)
+        .map(|p| &p.url)
+        .next()
+    else {
+        return;
+    };
+    let url = url.clone();
+    track.headers.retain(|(name, value)| {
+        if !name.eq_ignore_ascii_case("cookie") {
+            return true;
+        }
+        request.cookies.add_pairs(&url, value);
+        false
+    });
+}
+
+/// The quality chosen before, or the closest to it: the same video of the post, then the
+/// same height, then the nearest bandwidth. Without a choice, the best.
 pub fn pick_quality<'a>(
     qualities: &'a [Quality],
     choice: Option<&QualityChoice>,
@@ -293,6 +320,7 @@ pub fn pick_quality<'a>(
     };
     qualities.iter().min_by_key(|q| {
         (
+            q.video != choice.video,
             q.height != choice.height,
             q.bandwidth.abs_diff(choice.bandwidth),
         )

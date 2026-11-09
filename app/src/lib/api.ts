@@ -22,8 +22,9 @@ export type NewDownload = {
   queue?: string;
 };
 
-/** A quality, by its picture height and bandwidth. */
-export type QualityPick = { height: number | null; bandwidth: number };
+/** A quality, by its picture height and bandwidth, and for a post holding several videos,
+ * which one. */
+export type QualityPick = { height: number | null; bandwidth: number; video?: number | null };
 
 /** A video (HLS or DASH) to download, as the quality window chose it. */
 export type NewMedia = {
@@ -63,6 +64,8 @@ export type UpdateInfo = {
   /** Already installed: `version` is running now, and `previous` ran before it. */
   installed: boolean;
   previous: string | null;
+  /** This version changed the browser extension, which has to be updated by hand. */
+  extension: boolean;
 };
 
 export const api = {
@@ -104,6 +107,7 @@ export const api = {
   details: (id: number) => invoke<DownloadDetails | null>("download_details", { id }),
   updateInfo: () => invoke<UpdateInfo | null>("update_info"),
   installUpdate: () => invoke<void>("install_update"),
+  openReleasePage: (version: string) => invoke<void>("open_release_page", { version }),
 };
 
 /** Tauri commands reject with the Rust error string. */

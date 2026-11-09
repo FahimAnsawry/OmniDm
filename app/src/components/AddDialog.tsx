@@ -136,7 +136,7 @@ export function AddDialog({
           url: url.trim(),
           title: name.trim() || info.title,
           folder,
-          quality: chosen && { height: chosen.height ?? null, bandwidth: chosen.bandwidth },
+          quality: chosen && { height: chosen.height ?? null, bandwidth: chosen.bandwidth, video: chosen.video ?? null },
           audio: sound && { name: sound.name, language: sound.language ?? null },
           queue: inQueue,
         });
@@ -327,7 +327,7 @@ function ReadingVideo() {
       <p className="flex items-center gap-2 text-xs font-medium text-[#c9cfdd]">
         <Icon name="loader" className="size-3.5 text-[#8ea4ff] motion-safe:animate-spin" />
         Reading the video…
-        <span className="font-normal text-[#8b93a9]">a YouTube video can take a few seconds</span>
+        <span className="font-normal text-[#8b93a9]">a video site can take a few seconds</span>
       </p>
       <div aria-hidden="true" className="space-y-0.5 rounded-[10px] border border-white/[0.08] bg-white/[0.02] p-1">
         {[0.5, 0.42, 0.34].map((width, i) => (

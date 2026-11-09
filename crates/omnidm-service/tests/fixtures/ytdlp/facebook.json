@@ -1,0 +1,56 @@
+{
+  "id": "1234567890",
+  "title": "A launch",
+  "duration": 95.2,
+  "uploader": "NASA",
+  "extractor": "facebook",
+  "webpage_url": "https://www.facebook.com/watch/?v=1234567890",
+  "formats": [
+    {
+      "format_id": "sd",
+      "url": "https://video.xx.fbcdn.net/v/t42/sd.mp4?_nc_cat=1&oh=x",
+      "ext": "mp4",
+      "quality": -2,
+      "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    },
+    {
+      "format_id": "hd",
+      "url": "https://video.xx.fbcdn.net/v/t42/hd.mp4?_nc_cat=1&oh=x",
+      "ext": "mp4",
+      "quality": -1,
+      "height": 720,
+      "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    },
+    {
+      "format_id": "1122334455v",
+      "url": "https://video.xx.fbcdn.net/v/t42/dash-720.mp4?_nc_cat=1&oh=x",
+      "ext": "mp4",
+      "vcodec": "avc1.64001f",
+      "acodec": "none",
+      "width": 1280,
+      "height": 720,
+      "tbr": 1900.0,
+      "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    },
+    {
+      "format_id": "2233445566v",
+      "url": "https://video.xx.fbcdn.net/v/t42/dash-1080.mp4?_nc_cat=1&oh=x",
+      "ext": "mp4",
+      "vcodec": "avc1.640028",
+      "acodec": "none",
+      "width": 1920,
+      "height": 1080,
+      "tbr": 3500.0,
+      "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    },
+    {
+      "format_id": "3344556677a",
+      "url": "https://video.xx.fbcdn.net/v/t42/dash-audio.mp4?_nc_cat=1&oh=x",
+      "ext": "m4a",
+      "vcodec": "none",
+      "acodec": "mp4a.40.5",
+      "tbr": 96.0,
+      "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    }
+  ]
+}

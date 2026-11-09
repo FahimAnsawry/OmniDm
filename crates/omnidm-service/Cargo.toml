@@ -9,12 +9,12 @@ repository.workspace = true
 
 [dependencies]
 base64 = "0.22"
-omnidm-core = { version = "0.1.0", path = "../omnidm-core" }
-omnidm-ipc = { version = "0.1.0", path = "../omnidm-ipc" }
-omnidm-media = { version = "0.1.0", path = "../omnidm-media" }
-omnidm-net = { version = "0.1.0", path = "../omnidm-net" }
-omnidm-queue = { version = "0.1.0", path = "../omnidm-queue" }
-omnidm-store = { version = "0.1.0", path = "../omnidm-store" }
+omnidm-core = { version = "0.2.0", path = "../omnidm-core" }
+omnidm-ipc = { version = "0.2.0", path = "../omnidm-ipc" }
+omnidm-media = { version = "0.2.0", path = "../omnidm-media" }
+omnidm-net = { version = "0.2.0", path = "../omnidm-net" }
+omnidm-queue = { version = "0.2.0", path = "../omnidm-queue" }
+omnidm-store = { version = "0.2.0", path = "../omnidm-store" }
 fastrand = "2.5.0"
 jiff = "0.2.38"
 reqwest = "0.13.5"

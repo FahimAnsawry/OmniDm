@@ -7,7 +7,8 @@ import type { MediaQuality } from "./MediaQuality";
  */
 export type MediaInfo = { 
 /**
- * `hls` or `dash`.
+ * `hls`, `dash`, or the site of a video page read with yt-dlp: `youtube`, `tiktok`,
+ * `instagram`, `facebook` or `x`.
  */
 kind: string, 
 /**

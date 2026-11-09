@@ -35,3 +35,6 @@ Thumbs.db
 
 # The host copied in for the installer (scripts/build-setup.ps1)
 /app/src-tauri/binaries/
+
+# Local demo and video preview pages (README screenshots, demo video)
+/app/_preview/

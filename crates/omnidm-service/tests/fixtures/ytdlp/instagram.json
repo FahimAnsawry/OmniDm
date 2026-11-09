@@ -1,0 +1,46 @@
+{
+  "id": "C1a2B3c4D5e",
+  "title": "Video by someone",
+  "duration": 21.4,
+  "uploader": "someone",
+  "extractor": "Instagram",
+  "webpage_url": "https://www.instagram.com/reel/C1a2B3c4D5e/",
+  "formats": [
+    {
+      "format_id": "dash-1234567890v",
+      "url": "https://scontent.cdninstagram.com/o1/v/t16/f1/m78/video-1280.mp4?efg=x&oh=y",
+      "ext": "mp4",
+      "vcodec": "avc1.4d401f",
+      "acodec": "none",
+      "width": 720,
+      "height": 1280,
+      "tbr": 1600.5,
+      "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Accept": "*/*"}
+    },
+    {
+      "format_id": "dash-987654321a",
+      "url": "https://scontent.cdninstagram.com/o1/v/t16/f1/m78/audio.mp4?efg=x&oh=y",
+      "ext": "m4a",
+      "vcodec": "none",
+      "acodec": "mp4a.40.5",
+      "tbr": 64.2,
+      "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Accept": "*/*"}
+    },
+    {
+      "format_id": "2",
+      "url": "https://scontent.cdninstagram.com/v/t66/video-854.mp4?efg=x&oh=y",
+      "ext": "mp4",
+      "width": 480,
+      "height": 854,
+      "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Accept": "*/*"}
+    },
+    {
+      "format_id": "1",
+      "url": "https://scontent.cdninstagram.com/v/t66/video-1280.mp4?efg=x&oh=y",
+      "ext": "mp4",
+      "width": 720,
+      "height": 1280,
+      "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Accept": "*/*"}
+    }
+  ]
+}

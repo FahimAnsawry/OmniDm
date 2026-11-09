@@ -6,6 +6,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 publish = false
 
 [lib]
@@ -17,10 +18,10 @@ name = "omnidm_app_lib"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-omnidm-core = { version = "0.1.0", path = "../../crates/omnidm-core" }
-omnidm-ipc = { version = "0.1.0", path = "../../crates/omnidm-ipc" }
-omnidm-queue = { version = "0.1.0", path = "../../crates/omnidm-queue" }
-omnidm-service = { version = "0.1.0", path = "../../crates/omnidm-service" }
+omnidm-core = { version = "0.2.0", path = "../../crates/omnidm-core" }
+omnidm-ipc = { version = "0.2.0", path = "../../crates/omnidm-ipc" }
+omnidm-queue = { version = "0.2.0", path = "../../crates/omnidm-queue" }
+omnidm-service = { version = "0.2.0", path = "../../crates/omnidm-service" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = ["tray-icon"] }

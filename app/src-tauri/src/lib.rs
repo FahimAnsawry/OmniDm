@@ -167,6 +167,7 @@ pub fn run() {
             media::media_offer,
             media::accept_media,
             update::update_info,
+            update::open_release_page,
             update::install_update
         ])
         .run(tauri::generate_context!())

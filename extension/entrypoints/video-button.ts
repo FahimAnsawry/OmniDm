@@ -11,7 +11,7 @@
 import { browser } from 'wxt/browser';
 import type { MediaInfo } from '../../protocol/ts/MediaInfo';
 import type { MediaQuality } from '../../protocol/ts/MediaQuality';
-import { mediaName, qualityLabel, sizeLabel } from '../lib/media';
+import { kindLabel, mediaName, qualityLabel, sizeLabel } from '../lib/media';
 
 /** Smaller videos (previews, ads, avatars) get no button. */
 const MIN_WIDTH = 240;
@@ -276,7 +276,7 @@ function start() {
       const best = info.qualities.find((q) => q.height != null);
       const most = best ? (heightTag(best.height) ?? `${best.height}p`) : undefined;
       const facts = [
-        info.kind === 'youtube' ? 'YouTube' : info.kind.toUpperCase(),
+        kindLabel(info.kind),
         info.duration ? clock(info.duration) : undefined,
         most ? `up to ${most}` : undefined,
       ];
@@ -292,7 +292,7 @@ function start() {
     menu.replaceChildren(heading(videos[0]), element('div', className, text));
   };
 
-  const choose = async (url: string, quality: { height?: number; bandwidth: number }) => {
+  const choose = async (url: string, quality: { height?: number; bandwidth: number; video?: number }) => {
     say('note', 'Opening OmniDM…');
     try {
       const reply = await send<{ ok: true } | { error: string }>({ type: 'videoChoose', url, quality });
@@ -337,7 +337,7 @@ function start() {
     item.addEventListener('focus', () => activate(item));
     item.addEventListener('click', (event) => {
       event.stopPropagation();
-      void choose(video.url, { height: quality.height, bandwidth: quality.bandwidth });
+      void choose(video.url, { height: quality.height, bandwidth: quality.bandwidth, video: quality.video });
     });
     return item;
   };
@@ -375,8 +375,14 @@ function start() {
         parts.push(element('div', 'error', video.error ?? "This video can't be downloaded."));
         return;
       }
+      // A post holding several videos: each video's qualities under its number.
+      let shownVideo: number | undefined;
       for (const quality of video.info.qualities) {
         if (sound(quality) !== (tab === 'sound')) continue;
+        if (quality.video != null && quality.video !== shownVideo) {
+          shownVideo = quality.video;
+          parts.push(element('div', 'group', `Video ${quality.video}`));
+        }
         parts.push(qualityItem(video, quality));
         any = true;
       }

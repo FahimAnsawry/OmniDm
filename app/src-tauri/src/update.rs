@@ -5,6 +5,10 @@
 //! pauses the downloads, runs the signed installer quietly and restarts OmniDM, which
 //! then continues them. The first start of a new version, by update or by its setup, shows
 //! what changed in the same window.
+//!
+//! The browser extension doesn't update itself. When a release changes it, its notes end
+//! with an [`EXTENSION_HEADING`] section (plain steps, which older versions show as text),
+//! and the window shows how to update it, with a button to the release page.
 
 use std::sync::Mutex;
 use std::time::Duration;
@@ -29,6 +33,13 @@ const CHECK_EVERY: Duration = Duration::from_secs(12 * 60 * 60);
 /// The version that ran last, to notice the first start of a new one.
 const VERSION_SETTING: &str = "last_version";
 
+/// The line that starts the "update the browser extension" section of a release's notes.
+const EXTENSION_HEADING: &str = "Update the browser extension too";
+
+/// The window's size: taller when it also shows the extension steps.
+const SIZE: (f64, f64) = (600.0, 400.0);
+const SIZE_WITH_EXTENSION: (f64, f64) = (600.0, 652.0);
+
 // docs/releases/<version>.md, built in by build.rs.
 include!(concat!(env!("OUT_DIR"), "/release_notes.rs"));
 
@@ -51,6 +62,26 @@ pub struct UpdateInfo {
     /// Already installed: `version` is running now, and `previous` ran before it.
     installed: bool,
     previous: Option<String>,
+    /// This version changed the browser extension, which the user has to update by hand.
+    extension: bool,
+}
+
+/// A release's notes without the extension section, and whether it had one.
+fn split_notes(text: Option<&str>) -> (Option<String>, bool) {
+    let Some(text) = text else {
+        return (None, false);
+    };
+    let mut kept = Vec::new();
+    let mut extension = false;
+    for line in text.lines() {
+        if line.trim_start().starts_with(EXTENSION_HEADING) {
+            extension = true;
+            break;
+        }
+        kept.push(line);
+    }
+    let notes = kept.join("\n").trim().to_string();
+    ((!notes.is_empty()).then_some(notes), extension)
 }
 
 #[derive(Clone, Serialize)]
@@ -104,10 +135,12 @@ fn announce_new_version(app: &AppHandle, restarted: bool) {
     if !new {
         return;
     }
-    let notes = RELEASE_NOTES
-        .iter()
-        .find(|(version, _)| *version == current)
-        .map(|(_, notes)| notes.trim().to_string());
+    let (notes, extension) = split_notes(
+        RELEASE_NOTES
+            .iter()
+            .find(|(version, _)| *version == current)
+            .map(|(_, notes)| *notes),
+    );
     *app.state::<Found>().installed.lock().unwrap() = Some(UpdateInfo {
         version: current.clone(),
         current,
@@ -115,8 +148,9 @@ fn announce_new_version(app: &AppHandle, restarted: bool) {
         date: None,
         installed: true,
         previous,
+        extension,
     });
-    open(app);
+    open(app, extension);
 }
 
 /// Looks for a newer version and opens the window if there is one. `asked`: from the tray's
@@ -132,8 +166,9 @@ pub async fn check(app: &AppHandle, asked: bool) -> Result<(), String> {
     .await;
     match found {
         Ok(Some(update)) => {
+            let (_, extension) = split_notes(update.body.as_deref());
             *app.state::<Found>().offer.lock().unwrap() = Some(update);
-            open(app);
+            open(app, extension);
         }
         Ok(None) if asked => {
             let version = app.package_info().version.to_string();
@@ -156,16 +191,18 @@ fn tell(app: &AppHandle, title: &str, body: &str) {
     }
 }
 
-fn open(app: &AppHandle) {
+fn open(app: &AppHandle, extension: bool) {
+    let (width, height) = if extension { SIZE_WITH_EXTENSION } else { SIZE };
     if let Some(window) = app.get_webview_window(LABEL) {
+        let _ = window.set_size(tauri::LogicalSize::new(width, height));
         let _ = window.emit_to(LABEL, "update-found", ());
         crate::reveal(&window);
         return;
     }
     let built = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html".into()))
         .title("Update OmniDM")
-        // The same size as the download window, drawn the same way: see media.rs.
-        .inner_size(600.0, 400.0)
+        // As wide as the download window, drawn the same way: see media.rs.
+        .inner_size(width, height)
         .decorations(false)
         .transparent(true)
         .shadow(false)
@@ -190,14 +227,35 @@ pub fn update_info(app: AppHandle, found: tauri::State<'_, Found>) -> Option<Upd
     let Some(update) = found.offer.lock().unwrap().clone() else {
         return found.installed.lock().unwrap().clone();
     };
+    let (notes, extension) = split_notes(update.body.as_deref());
     Some(UpdateInfo {
         version: update.version.clone(),
         current: app.package_info().version.to_string(),
-        notes: update.body.clone(),
+        notes,
         date: update.date.map(|d| d.unix_timestamp()),
         installed: false,
         previous: None,
+        extension,
     })
+}
+
+/// Opens a version's GitHub release page, where its extension zips are.
+#[tauri::command]
+pub fn open_release_page(version: String) -> Result<(), String> {
+    let page = release_page(&version).ok_or("not a version number")?;
+    tauri_plugin_opener::open_url(&page, None::<&str>)
+        .map_err(|e| format!("can't open {page}: {e}"))
+}
+
+/// `https://github.com/…/releases/tag/v<version>`, for a version made only of the
+/// characters a version number has.
+fn release_page(version: &str) -> Option<String> {
+    let valid = !version.is_empty()
+        && version.len() <= 32
+        && version
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'));
+    valid.then(|| format!("{}/releases/tag/v{version}", env!("CARGO_PKG_HOMEPAGE")))
 }
 
 /// Downloads the update (its progress goes to the window as `update-downloaded`), checks
@@ -230,4 +288,45 @@ pub async fn install_update(app: AppHandle, found: tauri::State<'_, Found>) -> R
         return Err(format!("can't install the update: {e}"));
     }
     app.restart()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn notes_lose_the_extension_section_and_flag_it() {
+        let text = "- New: TikTok videos.\n- Fixed: a crash.\n\nUpdate the browser extension too:\n1. Download it.\n";
+        assert_eq!(
+            split_notes(Some(text)),
+            (
+                Some("- New: TikTok videos.\n- Fixed: a crash.".into()),
+                true
+            )
+        );
+    }
+
+    #[test]
+    fn notes_without_the_section_stay_whole() {
+        assert_eq!(
+            split_notes(Some("- Fixed: a crash.\n")),
+            (Some("- Fixed: a crash.".into()), false)
+        );
+        assert_eq!(split_notes(None), (None, false));
+        assert_eq!(
+            split_notes(Some("Update the browser extension too:\n1. Download it.")),
+            (None, true)
+        );
+    }
+
+    #[test]
+    fn release_pages_only_take_version_numbers() {
+        assert_eq!(
+            release_page("0.2.0").as_deref(),
+            Some("https://github.com/FahimAnsawry/OmniDm/releases/tag/v0.2.0")
+        );
+        assert_eq!(release_page("../../evil"), None);
+        assert_eq!(release_page("0.2.0?x=1"), None);
+        assert_eq!(release_page(""), None);
+    }
 }

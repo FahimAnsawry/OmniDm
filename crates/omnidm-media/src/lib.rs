@@ -23,8 +23,8 @@ pub const MAX_PIECES: usize = 200_000;
 pub enum StreamKind {
     Hls,
     Dash,
-    /// A YouTube video, read with yt-dlp.
-    YouTube,
+    /// A video page read with yt-dlp, by its site's id (`youtube`, `tiktok`…).
+    Site(&'static str),
 }
 
 /// What a stream offers.
@@ -70,6 +70,9 @@ pub struct Quality {
     pub codecs: Option<String>,
     /// Which [`AudioTrack::group`] it plays with; `None` when its sound is part of it.
     pub audio_group: Option<String>,
+    /// Which video of a post holding several it shows (1 is the first); `None` for a
+    /// single video.
+    pub video: Option<u32>,
     pub source: Source,
 }
 
@@ -103,7 +106,8 @@ pub struct Track {
     /// Tells the track apart when its addresses change between reads (a YouTube format's
     /// number); `None` when the addresses themselves do.
     pub id: Option<String>,
-    /// Request headers its pieces need, beyond the page's (yt-dlp names them).
+    /// Request headers its pieces need, beyond the page's (yt-dlp names them). A `Cookie`
+    /// one holds cookies its pieces need, which go into the download's cookie jar.
     pub headers: Vec<(String, String)>,
     /// A header piece that goes before the others (fragmented MP4).
     pub init: Option<Piece>,

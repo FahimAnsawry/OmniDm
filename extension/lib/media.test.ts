@@ -7,10 +7,13 @@ import {
   downloadable,
   forFrame,
   inspectPlaylist,
+  isSiteKind,
+  kindLabel,
   MAX_PER_TAB,
   mediaName,
   qualityLabel,
   shown,
+  siteVideo,
   sizeLabel,
   streamKind,
   youtubeVideo,
@@ -185,5 +188,82 @@ describe('youtubeVideo', () => {
     ]) {
       expect(youtubeVideo(not)).toBeUndefined();
     }
+  });
+});
+
+describe('siteVideo', () => {
+  it('knows a post on each video site by its address, in one usual form', () => {
+    const cases: [string, string, string][] = [
+      ['https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=1', 'youtube', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'],
+      [
+        'https://www.tiktok.com/@scout2015/video/6718335390845095173?is_from_webapp=1',
+        'tiktok',
+        'https://www.tiktok.com/@scout2015/video/6718335390845095173',
+      ],
+      [
+        'https://m.tiktok.com/@scout2015/video/6718335390845095173',
+        'tiktok',
+        'https://www.tiktok.com/@scout2015/video/6718335390845095173',
+      ],
+      ['https://vm.tiktok.com/ZMeAbCd12/', 'tiktok', 'https://vm.tiktok.com/ZMeAbCd12/'],
+      ['https://www.tiktok.com/t/ZTRav7308', 'tiktok', 'https://www.tiktok.com/t/ZTRav7308/'],
+      ['https://www.instagram.com/p/C1a2B3c4D5e/?img_index=2', 'instagram', 'https://www.instagram.com/p/C1a2B3c4D5e/'],
+      ['https://www.instagram.com/reels/C1a2B3c4D5e/', 'instagram', 'https://www.instagram.com/reel/C1a2B3c4D5e/'],
+      ['https://www.instagram.com/someone/reel/C1a2B3c4D5e/', 'instagram', 'https://www.instagram.com/reel/C1a2B3c4D5e/'],
+      ['https://x.com/NASA/status/1790000000000000000', 'x', 'https://x.com/NASA/status/1790000000000000000'],
+      [
+        'https://twitter.com/NASA/status/1790000000000000000/video/1',
+        'x',
+        'https://x.com/NASA/status/1790000000000000000',
+      ],
+      ['https://www.facebook.com/watch/?v=1234567890&ref=x', 'facebook', 'https://www.facebook.com/watch/?v=1234567890'],
+      ['https://m.facebook.com/video.php?v=1234567890', 'facebook', 'https://www.facebook.com/watch/?v=1234567890'],
+      ['https://www.facebook.com/reel/1234567890/?s=x', 'facebook', 'https://www.facebook.com/reel/1234567890'],
+      [
+        'https://www.facebook.com/NASA/videos/a-launch/1234567890/',
+        'facebook',
+        'https://www.facebook.com/NASA/videos/1234567890',
+      ],
+      ['https://www.facebook.com/share/v/1AbCdEfGh/', 'facebook', 'https://www.facebook.com/share/v/1AbCdEfGh/'],
+      ['https://fb.watch/abc123XYZ/', 'facebook', 'https://fb.watch/abc123XYZ/'],
+    ];
+    for (const [url, kind, usual] of cases) {
+      expect(siteVideo(url), url).toEqual({ url: usual, kind });
+    }
+    expect(mediaName('https://www.tiktok.com/@scout2015/video/6718335390845095173')).toBe('TikTok video');
+  });
+
+  it('refuses look-alike hosts and pages that are not one post', () => {
+    for (const not of [
+      'https://www.tiktok.com.evil.example/@a/video/6718335390845095173',
+      'https://eviltiktok.com/@a/video/6718335390845095173',
+      'https://instagram.com.example.net/p/C1a2B3c4D5e/',
+      'https://box.com/a/status/1790000000000000000',
+      'https://x.com.evil.example/a/status/1790000000000000000',
+      'https://notfacebook.com/watch?v=1234567890',
+      'https://fb.watch.evil.example/abc/',
+      'https://www.tiktok.com/@scout2015',
+      'https://www.tiktok.com/foryou',
+      'https://www.instagram.com/',
+      'https://www.instagram.com/someone/',
+      'https://x.com/NASA',
+      'https://x.com/home',
+      'https://x.com/NASA/status/notanumber',
+      'https://www.facebook.com/watch',
+      'https://www.facebook.com/NASA',
+      'ftp://x.com/a/status/1790000000000000000',
+      'not a link',
+    ]) {
+      expect(siteVideo(not), not).toBeUndefined();
+    }
+  });
+
+  it('names the kinds of video', () => {
+    expect(isSiteKind('tiktok')).toBe(true);
+    expect(isSiteKind('hls')).toBe(false);
+    expect(isSiteKind('toString')).toBe(false);
+    expect(kindLabel('x')).toBe('X');
+    expect(kindLabel('instagram')).toBe('Instagram');
+    expect(kindLabel('dash')).toBe('DASH');
   });
 });

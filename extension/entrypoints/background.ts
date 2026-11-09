@@ -19,13 +19,15 @@ import {
   applyInspection,
   forFrame,
   inspectPlaylist,
+  isSiteKind,
   shown,
+  siteFound,
+  siteVideo,
   streamKind,
-  youtubeFound,
-  youtubeVideo,
   type FoundMedia,
   type Inspection,
   type PlaylistKind,
+  type SiteVideo,
 } from '../lib/media';
 import { NativeLink, type LinkStatus } from '../lib/native';
 import { badgeFor, shouldOpenSetup, type Badge } from '../lib/notice';
@@ -164,42 +166,43 @@ export default defineBackground(() => {
     { urls: ['<all_urls>'], types: ['xmlhttprequest', 'media', 'other'] },
     ['responseHeaders'],
   );
-  // YouTube plays no standard playlist: its pages are known by their address instead, and
-  // YouTube moves between videos without loading a new page.
-  const noticeYoutube = async (tabId: number, frameId: number, video: string) => {
+  // Video sites play no standard playlist (their players play from `blob:` addresses): a
+  // video's page is known by its address instead. They move between videos without
+  // loading a new page, so the address is followed as it changes.
+  const noticeSite = async (tabId: number, frameId: number, video: SiteVideo) => {
     await restored;
-    const item = youtubeFound(video, frameId);
+    const item = siteFound(video, frameId);
     updateFound(tabId, (list) => [
-      // Its page shows one video at a time; an embedded player adds one.
-      ...list.filter((item) => item.kind !== 'youtube' || (item.frameId ?? 0) !== frameId),
+      // Its page shows one video or post at a time; an embedded player adds one.
+      ...list.filter((item) => !isSiteKind(item.kind) || (item.frameId ?? 0) !== frameId),
       item,
     ]);
-    // Pre-fetch YouTube qualities in the background so the menu opens with no wait.
+    // Read its qualities in the background so the menu opens with no wait.
     void lookAt(tabId, item).catch(() => undefined);
     await addButton(tabId, frameId);
   };
   browser.tabs.onUpdated.addListener((tabId, change, tab) => {
     if (change.url) {
-      const video = youtubeVideo(change.url);
+      const video = siteVideo(change.url);
       if (video) {
-        void noticeYoutube(tabId, 0, video);
+        void noticeSite(tabId, 0, video);
       } else if (change.status === 'loading' && found.has(tabId)) {
         // Another page: what the last one played is gone.
         updateFound(tabId, () => []);
-      } else if (found.get(tabId)?.some((item) => item.kind === 'youtube' && !item.frameId)) {
-        // Left the video for another YouTube page.
-        updateFound(tabId, (list) => list.filter((item) => item.kind !== 'youtube' || item.frameId));
+      } else if (found.get(tabId)?.some((item) => isSiteKind(item.kind) && !item.frameId)) {
+        // Left the video for another page of the site (a feed, a profile).
+        updateFound(tabId, (list) => list.filter((item) => !isSiteKind(item.kind) || item.frameId));
       }
     }
     // The page is ready for the button now.
-    const video = change.status === 'complete' && tab.url ? youtubeVideo(tab.url) : undefined;
-    if (video) void noticeYoutube(tabId, 0, video);
+    const video = change.status === 'complete' && tab.url ? siteVideo(tab.url) : undefined;
+    if (video) void noticeSite(tabId, 0, video);
   });
   // An embedded YouTube player, once its frame has loaded.
   browser.webRequest.onCompleted.addListener(
     (details) => {
-      const video = details.tabId >= 0 ? youtubeVideo(details.url) : undefined;
-      if (video) void noticeYoutube(details.tabId, details.frameId, video);
+      const video = details.tabId >= 0 ? siteVideo(details.url) : undefined;
+      if (video?.kind === 'youtube') void noticeSite(details.tabId, details.frameId, video);
     },
     {
       urls: ['*://*.youtube.com/embed/*', '*://*.youtube-nocookie.com/embed/*'],
@@ -413,7 +416,7 @@ export default defineBackground(() => {
       try {
         const payload = await mediaFound(tabId, item);
         // yt-dlp can take a while, and the first time it is downloaded too.
-        const timeout = item.kind === 'youtube' ? 150_000 : 30_000;
+        const timeout = isSiteKind(item.kind) ? 150_000 : 30_000;
         const reply = await link.request({ type: 'mediaLook', payload }, timeout);
         if (reply.type === 'mediaInfo') video = { url: item.url, info: reply.payload as MediaInfo };
         else if (reply.type === 'error') video = { url: item.url, error: reply.payload.message };
@@ -463,13 +466,14 @@ export default defineBackground(() => {
       return restored.then(async () => {
         const frameId = sender.frameId ?? 0;
         let here = forFrame(found.get(tabId) ?? [], frameId);
-        // If the tab was already open before the extension reloaded, recover a YouTube page's video.
+        // If the tab was already open before the extension reloaded, recover a video
+        // site's video from the page's address.
         if (here.length === 0 && frameId === 0) {
           const url = sender.tab?.url ?? (await browser.tabs.get(tabId).catch(() => undefined))?.url;
-          const video = url ? youtubeVideo(url) : undefined;
+          const video = url ? siteVideo(url) : undefined;
           if (video) {
-            const item = youtubeFound(video, 0);
-            updateFound(tabId, (list) => [...list.filter((i) => i.kind !== 'youtube' || i.frameId), item]);
+            const item = siteFound(video, 0);
+            updateFound(tabId, (list) => [...list.filter((i) => !isSiteKind(i.kind) || i.frameId), item]);
             here = [item];
           }
         }

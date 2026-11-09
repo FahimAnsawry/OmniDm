@@ -538,6 +538,7 @@ async fn the_menu_on_a_video_lists_its_qualities_and_keeps_the_pick() {
     let picked = MediaQualityPick {
         height: Some(360),
         bandwidth: 800_000,
+        video: None,
     };
     let id = client.send(Message::Media(found(Some(picked)))).await;
     assert!(matches!(client.reply_to(&id).await.message, Message::Ack));

@@ -33,6 +33,7 @@ pub fn read_manifest(text: &[u8], url: &Url) -> Result<Manifest, MediaError> {
                     frame_rate: None,
                     codecs: None,
                     audio_group: None,
+                    video: None,
                     source: Source::Track(track),
                 }],
                 audio: Vec::new(),
@@ -100,6 +101,7 @@ fn from_master(master: MasterPlaylist, url: &Url) -> Result<Manifest, MediaError
             frame_rate: variant.frame_rate,
             codecs: variant.codecs,
             audio_group,
+            video: None,
             source: Source::Playlist(join(url, &variant.uri)?),
         });
     }

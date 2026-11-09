@@ -17,4 +17,9 @@ defaultAudio?: number,
 /**
  * Estimated bytes, with its default sound.
  */
-size?: number, };
+size?: number, 
+/**
+ * Which video of a post holding several it shows (1 is the first); none for a single
+ * video.
+ */
+video?: number, };

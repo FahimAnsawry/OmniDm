@@ -1,0 +1,67 @@
+{
+  "id": "6718335390845095173",
+  "title": "Scramble up ur name and I will try to guess it #foryoupage #petsoftiktok",
+  "duration": 15,
+  "uploader": "scout2015",
+  "extractor": "TikTok",
+  "webpage_url": "https://www.tiktok.com/@scout2015/video/6718335390845095173",
+  "formats": [
+    {
+      "format_id": "download",
+      "format_note": "watermarked",
+      "url": "https://v16-webapp-prime.tiktok.com/video/tos/useast2a/download.mp4?a=1988&expire=1790000000&signature=x",
+      "protocol": "https",
+      "ext": "mp4",
+      "vcodec": "h264",
+      "acodec": "aac",
+      "width": 576,
+      "height": 1024,
+      "tbr": 2000.0,
+      "filesize": 3750000,
+      "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Referer": "https://www.tiktok.com/"},
+      "cookies": "tt_chain_token=abc123; Domain=.tiktok.com; Path=/; Secure; Expires=1790000000"
+    },
+    {
+      "format_id": "h264_540p_1147254-0",
+      "url": "https://v16-webapp-prime.tiktok.com/video/tos/useast2a/h264_540.mp4?a=1988&expire=1790000000&signature=y",
+      "protocol": "https",
+      "ext": "mp4",
+      "vcodec": "h264",
+      "acodec": "aac",
+      "width": 576,
+      "height": 1024,
+      "tbr": 1147.254,
+      "filesize": 2150000,
+      "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Referer": "https://www.tiktok.com/"},
+      "cookies": "tt_chain_token=abc123; Domain=.tiktok.com; Path=/; Secure; Expires=1790000000"
+    },
+    {
+      "format_id": "bytevc1_720p_1800000-0",
+      "url": "https://v16-webapp-prime.tiktok.com/video/tos/useast2a/bytevc1_720.mp4?a=1988&expire=1790000000&signature=z",
+      "protocol": "https",
+      "ext": "mp4",
+      "vcodec": "h265",
+      "acodec": "aac",
+      "width": 720,
+      "height": 1280,
+      "tbr": 1800.0,
+      "filesize": 3370000,
+      "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Referer": "https://www.tiktok.com/"},
+      "cookies": "tt_chain_token=abc123; Domain=.tiktok.com; Path=/; Secure; Expires=1790000000"
+    },
+    {
+      "format_id": "h264_720p_1500000-0",
+      "url": "https://v16-webapp-prime.tiktok.com/video/tos/useast2a/h264_720.mp4?a=1988&expire=1790000000&signature=w",
+      "protocol": "https",
+      "ext": "mp4",
+      "vcodec": "h264",
+      "acodec": "aac",
+      "width": 720,
+      "height": 1280,
+      "tbr": 1500.0,
+      "filesize": 2810000,
+      "http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Referer": "https://www.tiktok.com/"},
+      "cookies": "tt_chain_token=abc123; Domain=.tiktok.com; Path=/; Secure; Expires=1790000000"
+    }
+  ]
+}

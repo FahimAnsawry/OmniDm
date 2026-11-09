@@ -278,7 +278,7 @@ impl Manager {
             config: self.inner.config.engine.clone(),
             parallel: self.max_connections() as usize,
             cancel,
-            ytdlp: ytdlp::is_youtube(&url).then(|| self.ytdlp()),
+            ytdlp: ytdlp::site_of(&url).is_some().then(|| self.ytdlp()),
         };
         self.set_status(id, Status::Running, None);
         self.note(id, "Started");
@@ -373,10 +373,10 @@ impl Manager {
         });
     }
 
-    /// The stream's playlist (or, for YouTube, yt-dlp's description of the video), read;
-    /// its problems (DRM, live, a dead link) as the error.
+    /// The stream's playlist (or, for a video page such as YouTube's or TikTok's, yt-dlp's
+    /// description of the video), read; its problems (DRM, live, a dead link) as the error.
     async fn read_media(&self, request: &Request) -> Result<Manifest, String> {
-        if ytdlp::is_youtube(&request.url) {
+        if ytdlp::site_of(&request.url).is_some() {
             // yt-dlp keeps its own time limit; the first time, it is downloaded too.
             let ytdlp = self.ytdlp();
             let cancel = CancellationToken::new();
@@ -433,7 +433,7 @@ impl Manager {
         }
     }
 
-    /// What reads YouTube videos.
+    /// What reads video pages (YouTube, TikTok…).
     pub(crate) fn ytdlp(&self) -> Arc<YtDlp> {
         self.inner.ytdlp.lock().unwrap().clone()
     }
@@ -470,6 +470,7 @@ fn from_found(found: MediaFound) -> MediaAdd {
             quality: found.quality.map(|q| QualityChoice {
                 height: q.height,
                 bandwidth: q.bandwidth,
+                video: q.video,
             }),
             audio: None,
         },
@@ -498,7 +499,8 @@ fn media_request(add: &MediaAdd) -> Result<Request, String> {
     })
 }
 
-/// `manifest` for the quality window, with sizes estimated from `duration`.
+/// `manifest` for the quality window, with sizes estimated from each track's length (the
+/// videos of one post differ), else `duration`.
 fn media_info(manifest: &Manifest, duration: Option<f64>, title: &str) -> MediaInfo {
     let place = |track: &omnidm_media::AudioTrack| {
         manifest
@@ -514,6 +516,10 @@ fn media_info(manifest: &Manifest, duration: Option<f64>, title: &str) -> MediaI
             let default = manifest.default_audio(quality);
             // HLS counts the sound in a quality's bandwidth; DASH lists it apart.
             let sound = default.and_then(|a| a.bandwidth).unwrap_or(0);
+            let seconds = match &quality.source {
+                Source::Track(track) => track.duration.or(duration),
+                Source::Playlist(_) => duration,
+            };
             MediaQuality {
                 width: quality.width,
                 height: quality.height,
@@ -522,9 +528,10 @@ fn media_info(manifest: &Manifest, duration: Option<f64>, title: &str) -> MediaI
                 codecs: quality.codecs.clone(),
                 audio: manifest.audio_for(quality).filter_map(place).collect(),
                 default_audio: default.and_then(place),
-                size: duration
+                size: seconds
                     .filter(|_| quality.bandwidth > 0)
                     .map(|seconds| ((quality.bandwidth + sound) as f64 * seconds / 8.0) as u64),
+                video: quality.video,
             }
         })
         .collect();
@@ -532,7 +539,7 @@ fn media_info(manifest: &Manifest, duration: Option<f64>, title: &str) -> MediaI
         kind: match manifest.kind {
             StreamKind::Hls => "hls",
             StreamKind::Dash => "dash",
-            StreamKind::YouTube => "youtube",
+            StreamKind::Site(id) => id,
         }
         .into(),
         title: manifest

@@ -78,6 +78,7 @@ pub fn read_manifest(text: &str, url: &Url) -> Result<Manifest, MediaError> {
                         .and_then(frame_rate),
                     codecs: rep.codecs.clone().or_else(|| adaptation.codecs.clone()),
                     audio_group: None,
+                    video: None,
                     source: Source::Track(track),
                 });
             } else {
@@ -112,6 +113,7 @@ pub fn read_manifest(text: &str, url: &Url) -> Result<Manifest, MediaError> {
                 frame_rate: None,
                 codecs: a.codecs,
                 audio_group: None,
+                video: None,
                 source: a.source,
             })
             .collect();

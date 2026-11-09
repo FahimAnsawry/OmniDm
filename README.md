@@ -37,6 +37,12 @@ OmniDM splits every download into many parallel connections, survives crashes an
 
 <br>
 
+<div align="center">
+  <img src="docs/assets/readme/demo.gif" alt="Demo: clicking a download link in the browser opens OmniDM, which downloads the file and shows Download complete" width="100%">
+</div>
+
+<br>
+
 ## Features
 
 <table>

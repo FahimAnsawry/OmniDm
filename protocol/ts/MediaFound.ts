@@ -8,11 +8,11 @@ import type { MediaQualityPick } from "./MediaQualityPick";
  */
 export type MediaFound = { 
 /**
- * `hls` or `dash`.
+ * As [`MediaInfo::kind`].
  */
 kind: string, 
 /**
- * Its playlist (`.m3u8`) or manifest (`.mpd`).
+ * Its playlist (`.m3u8`) or manifest (`.mpd`), or the video page.
  */
 url: string, pageUrl?: string, 
 /**

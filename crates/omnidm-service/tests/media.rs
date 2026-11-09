@@ -299,6 +299,7 @@ high.m3u8
         quality: Some(QualityChoice {
             height: Some(360),
             bandwidth: 800_000,
+            video: None,
         }),
         audio: None,
     };

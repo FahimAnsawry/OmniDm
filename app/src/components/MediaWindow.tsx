@@ -113,7 +113,7 @@ export function MediaWindow({ offer }: { offer: number }) {
         offer,
         title: name.trim() || info.title,
         folder,
-        quality: chosen && { height: chosen.height ?? null, bandwidth: chosen.bandwidth },
+        quality: chosen && { height: chosen.height ?? null, bandwidth: chosen.bandwidth, video: chosen.video ?? null },
         audio: sound && { name: sound.name, language: sound.language ?? null },
         queue: inQueue,
       });

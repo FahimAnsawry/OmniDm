@@ -9,7 +9,7 @@ repository.workspace = true
 
 [dependencies]
 fastrand = "2.5.0"
-omnidm-net = { version = "0.1.0", path = "../omnidm-net" }
+omnidm-net = { version = "0.2.0", path = "../omnidm-net" }
 reqwest = "0.13.5"
 tokio = { version = "1.54.1", features = ["rt", "sync", "time", "macros"] }
 tokio-util = "0.7.20"

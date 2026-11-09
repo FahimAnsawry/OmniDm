@@ -2,15 +2,43 @@
 
 // Videos playing on a page (plan §9.2, media detection): HLS and DASH playlists seen in
 // the tab's network traffic, read once to tell a whole video from one of its qualities,
-// and to spot DRM and live streams, which can't be downloaded.
+// and to spot DRM and live streams, which can't be downloaded. Video sites (YouTube,
+// TikTok, Instagram, Facebook, X) play no standard playlist: their pages are known by
+// their address, and the app reads them with yt-dlp.
 
 import type { MediaQuality } from '../../protocol/ts/MediaQuality';
 
-/** `youtube`: a YouTube video, which the app reads with yt-dlp. */
-export type StreamKind = 'hls' | 'dash' | 'youtube';
+/** A video site whose pages the app reads with yt-dlp. */
+export type SiteKind = 'youtube' | 'tiktok' | 'instagram' | 'facebook' | 'x';
+
+export type StreamKind = 'hls' | 'dash' | SiteKind;
 
 /** The kinds that come as a playlist. */
-export type PlaylistKind = Exclude<StreamKind, 'youtube'>;
+export type PlaylistKind = Exclude<StreamKind, SiteKind>;
+
+const SITE_NAMES: Record<SiteKind, string> = {
+  youtube: 'YouTube',
+  tiktok: 'TikTok',
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+  x: 'X',
+};
+
+/** Whether `kind` is a video site's page rather than a playlist. */
+export function isSiteKind(kind: string): kind is SiteKind {
+  return Object.prototype.hasOwnProperty.call(SITE_NAMES, kind);
+}
+
+/** "YouTube", "TikTok", "HLS"…: a short name for a kind of video. */
+export function kindLabel(kind: string): string {
+  return isSiteKind(kind) ? SITE_NAMES[kind] : kind.toUpperCase();
+}
+
+/** A video site's page showing one video or post, by its usual address. */
+export interface SiteVideo {
+  url: string;
+  kind: SiteKind;
+}
 
 export type MediaState =
   /** Being read. */
@@ -88,9 +116,69 @@ export function youtubeVideo(url: string): string | undefined {
   return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? `https://www.youtube.com/watch?v=${id}` : undefined;
 }
 
-/** A YouTube video found in a frame: ready at once (the app reads it when asked). */
-export function youtubeFound(url: string, frameId = 0): FoundMedia {
-  return { url, kind: 'youtube', state: 'ready', frameId };
+/** The video or post a video site's page shows, by its usual address; `undefined` for any
+ * other page (a feed, a profile, another site). Only the sites' own hosts and their
+ * subdomains count, so `tiktok.com.example.net` is not TikTok. */
+export function siteVideo(url: string): SiteVideo | undefined {
+  const youtube = youtubeVideo(url);
+  if (youtube) return { url: youtube, kind: 'youtube' };
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return undefined;
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return undefined;
+  const host = parsed.hostname.toLowerCase();
+  const on = (domain: string) => host === domain || host.endsWith(`.${domain}`);
+  const at = parsed.pathname.split('/').filter(Boolean);
+  const [a = '', b = '', c = '', d = ''] = at;
+  const code = (s: string) => /^[A-Za-z0-9_-]+$/.test(s);
+  const number = (s: string) => /^\d+$/.test(s);
+  const found = (kind: SiteKind, address: string): SiteVideo => ({ url: address, kind });
+
+  if (on('vm.tiktok.com') || on('vt.tiktok.com')) {
+    return code(a) ? found('tiktok', `https://${host}/${a}/`) : undefined;
+  }
+  if (on('tiktok.com')) {
+    if (a.startsWith('@') && b === 'video' && number(c)) {
+      return found('tiktok', `https://www.tiktok.com/${a}/video/${c}`);
+    }
+    if (a === 'embed' && number(b)) return found('tiktok', `https://www.tiktok.com/embed/${b}`);
+    if (a === 't' && code(b)) return found('tiktok', `https://www.tiktok.com/t/${b}/`);
+    return undefined;
+  }
+  if (on('instagram.com')) {
+    const kinds = ['p', 'reel', 'reels', 'tv'];
+    const [kind, id] = kinds.includes(a) ? [a, b] : kinds.includes(b) ? [b, c] : ['', ''];
+    if (!kind || !code(id)) return undefined;
+    return found('instagram', `https://www.instagram.com/${kind === 'reels' ? 'reel' : kind}/${id}/`);
+  }
+  if (on('x.com') || on('twitter.com')) {
+    return code(a) && b === 'status' && number(c) ? found('x', `https://x.com/${a}/status/${c}`) : undefined;
+  }
+  if (on('fb.watch')) return code(a) ? found('facebook', `https://fb.watch/${a}/`) : undefined;
+  if (on('facebook.com')) {
+    const v = parsed.searchParams.get('v') ?? '';
+    if ((a === 'watch' || a === 'video.php') && number(v)) {
+      return found('facebook', `https://www.facebook.com/watch/?v=${v}`);
+    }
+    if (a === 'reel' && number(b)) return found('facebook', `https://www.facebook.com/reel/${b}`);
+    if (a === 'share' && (b === 'v' || b === 'r') && code(c)) {
+      return found('facebook', `https://www.facebook.com/share/${b}/${c}/`);
+    }
+    if (b === 'videos') {
+      const id = number(c) ? c : number(d) ? d : undefined;
+      if (id) return found('facebook', `https://www.facebook.com/${a}/videos/${id}`);
+    }
+    return undefined;
+  }
+  return undefined;
+}
+
+/** A video site's video found in a frame: ready at once (the app reads it when asked). */
+export function siteFound(video: SiteVideo, frameId = 0): FoundMedia {
+  return { url: video.url, kind: video.kind, state: 'ready', frameId };
 }
 
 /** Reads a playlist's text, fetched from `url`. */
@@ -214,9 +302,11 @@ export function sizeLabel(bytes: number): string {
   return `~${shown} ${units[unit]}`;
 }
 
-/** A short name for a video: its playlist's file name, or its folder's when generic. */
+/** A short name for a video: "TikTok video" for a video site's, else its playlist's file
+ * name, or its folder's when generic. */
 export function mediaName(url: string): string {
-  if (youtubeVideo(url)) return 'YouTube video';
+  const site = siteVideo(url);
+  if (site) return `${SITE_NAMES[site.kind]} video`;
   try {
     const parsed = new URL(url);
     const segments = parsed.pathname.split('/').filter(Boolean).map(decodeURIComponent);

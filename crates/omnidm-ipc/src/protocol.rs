@@ -737,7 +737,8 @@ pub enum AfterQueueOutcome {
 #[serde(rename_all = "camelCase")]
 #[ts(export, optional_fields)]
 pub struct MediaInfo {
-    /// `hls` or `dash`.
+    /// `hls`, `dash`, or the site of a video page read with yt-dlp: `youtube`, `tiktok`,
+    /// `instagram`, `facebook` or `x`.
     pub kind: String,
     /// A name for the file, without an extension: the page's title or the playlist's name.
     pub title: String,
@@ -775,6 +776,10 @@ pub struct MediaQuality {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "number")]
     pub size: Option<u64>,
+    /// Which video of a post holding several it shows (1 is the first); none for a single
+    /// video.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -795,9 +800,9 @@ pub struct MediaAudio {
 #[serde(rename_all = "camelCase")]
 #[ts(export, optional_fields)]
 pub struct MediaFound {
-    /// `hls` or `dash`.
+    /// As [`MediaInfo::kind`].
     pub kind: String,
-    /// Its playlist (`.m3u8`) or manifest (`.mpd`).
+    /// Its playlist (`.m3u8`) or manifest (`.mpd`), or the video page.
     pub url: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page_url: Option<String>,
@@ -830,4 +835,7 @@ pub struct MediaQualityPick {
     pub height: Option<u32>,
     #[ts(type = "number")]
     pub bandwidth: u64,
+    /// As [`MediaQuality::video`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video: Option<u32>,
 }

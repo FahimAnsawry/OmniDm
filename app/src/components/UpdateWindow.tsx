@@ -3,9 +3,10 @@
 // The update window: opens when a newer OmniDM is out. "Update now" turns it into the
 // updating card (a bar shows how far), which pauses the downloads and restarts into the new
 // version; "Later" asks again at the next look. After the restart the same window opens as
-// the finished card, saying what changed.
+// the finished card, saying what changed. When the version changed the browser extension,
+// which doesn't update itself, both cards also say how to update it.
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorText, type UpdateInfo } from "../lib/api";
 import { formatBytes } from "../lib/format";
@@ -119,7 +120,13 @@ export function UpdateWindow() {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-3">
+        {/* With the extension steps below, the notes take only the room they need (scrolling
+            past it), so no empty box sits above the steps. */}
+        <div
+          className={`min-h-0 overflow-y-auto rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-3 ${
+            info?.extension ? "shrink" : "flex-1"
+          }`}
+        >
           <p className="mb-1.5 text-xs font-semibold tracking-[0.06em] text-[#8b93a9] uppercase">
             {info ? `What's new in ${info.version}` : "What's new"}
           </p>
@@ -127,6 +134,8 @@ export function UpdateWindow() {
             {info?.notes?.trim() || "Fixes and improvements."}
           </p>
         </div>
+
+        {info?.extension && <ExtensionSteps version={info.version} />}
 
         {busy ? (
           <div className="flex flex-col gap-2">
@@ -207,6 +216,60 @@ export function UpdateWindow() {
         )}
       </div>
     </form>
+  );
+}
+
+/** How to update the browser extension by hand, from the version's release page. */
+function ExtensionSteps({ version }: { version: string }) {
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <section
+      aria-label="Update the browser extension"
+      className="flex shrink-0 flex-col gap-2.5 rounded-xl border border-[#6b88ff33] bg-[#4a6cff0f] px-3.5 py-3"
+    >
+      <div className="flex items-center gap-2">
+        <Icon name="puzzle" className="size-4 shrink-0 text-[#8ea4ff]" />
+        <h2 className="min-w-0 flex-1 text-[13px] font-semibold">Update the browser extension too</h2>
+        <button
+          type="button"
+          onClick={() => {
+            setError(null);
+            api.openReleasePage(version).catch((e) => setError(errorText(e)));
+          }}
+          className="button-glass flex h-8 shrink-0 items-center gap-1.5 rounded-[9px] px-3 text-xs font-semibold"
+        >
+          Open release page
+          <Icon name="external-link" className="size-3.5 text-[#c9cfdd]" />
+        </button>
+      </div>
+      <ol className="flex flex-col gap-1.5 text-[12.5px] leading-snug text-[#c9cfdd] select-text">
+        <Step number={1}>
+          On the release page, download <b className="font-semibold text-[#f4f6fb]">OmniDM-Extension-Chrome-{version}.zip</b>{" "}
+          (Chrome, Edge, Brave) or the Firefox one.
+        </Step>
+        <Step number={2}>
+          Unzip it into your <b className="font-semibold text-[#f4f6fb]">OmniDM_chrome</b> (or OmniDM_firefox) folder,
+          replacing what's there.
+        </Step>
+        <Step number={3}>On your browser's extensions page, click the reload arrow ↻ on OmniDM.</Step>
+      </ol>
+      {error && (
+        <p role="alert" className="truncate text-xs text-[#ff9a9e]" title={error}>
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function Step({ number, children }: { number: number; children: ReactNode }) {
+  return (
+    <li className="flex gap-2.5">
+      <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.05] font-mono text-[11px] font-semibold text-[#c9cfdd]">
+        {number}
+      </span>
+      <span className="min-w-0 flex-1">{children}</span>
+    </li>
   );
 }
 

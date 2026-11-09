@@ -4,4 +4,8 @@
  * A quality, told by its picture height and bandwidth (they survive the playlist being
  * read again).
  */
-export type MediaQualityPick = { height?: number, bandwidth: number, };
+export type MediaQualityPick = { height?: number, bandwidth: number, 
+/**
+ * As [`MediaQuality::video`].
+ */
+video?: number, };
